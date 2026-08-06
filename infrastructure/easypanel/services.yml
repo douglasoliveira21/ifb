@@ -1,0 +1,75 @@
+# =============================================================================
+# Configuração de Serviços para EasyPanel
+# Instituto Fiscaliza Brasil
+# =============================================================================
+#
+# Este arquivo documenta os serviços que devem ser criados no EasyPanel.
+# A configuração real é feita via interface do EasyPanel ou API.
+#
+# SERVIÇOS:
+# =========
+#
+# 1. ifb-postgres
+#    - Tipo: PostgreSQL 16 + pgvector
+#    - Volume: /var/lib/postgresql/data (persistente)
+#    - Porta interna: 5432
+#    - Health check: pg_isready
+#    - Backup: diário via cron
+#
+# 2. ifb-redis
+#    - Tipo: Redis 7
+#    - Volume: /data (persistente)
+#    - Porta interna: 6379
+#
+# 3. ifb-minio
+#    - Tipo: MinIO
+#    - Volume: /data (persistente)
+#    - Portas: 9000 (API), 9001 (Console)
+#
+# 4. ifb-backend
+#    - Tipo: Docker (custom)
+#    - Build: ./backend/Dockerfile
+#    - Porta: 8000
+#    - Workers: 4
+#    - Domínio: api.fiscalizabrasil.org.br
+#    - Health: /api/v1/health
+#    - Variáveis: ver .env.example
+#
+# 5. ifb-worker
+#    - Tipo: Docker (custom)
+#    - Build: ./backend/Dockerfile
+#    - Comando: celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
+#    - Sem porta exposta
+#
+# 6. ifb-scheduler
+#    - Tipo: Docker (custom)
+#    - Build: ./backend/Dockerfile
+#    - Comando: celery -A app.workers.celery_app beat --loglevel=info
+#    - Sem porta exposta
+#
+# 7. ifb-frontend
+#    - Tipo: Docker (custom)
+#    - Build: ./frontend/Dockerfile
+#    - Porta: 3000
+#    - Domínio: fiscalizabrasil.org.br / www.fiscalizabrasil.org.br
+#    - Health: /
+#
+# DOMÍNIOS E SSL:
+# ===============
+# - fiscalizabrasil.org.br → ifb-frontend
+# - api.fiscalizabrasil.org.br → ifb-backend
+# - SSL automático via Let's Encrypt (EasyPanel)
+#
+# BACKUPS:
+# ========
+# - PostgreSQL: pg_dump diário às 03:00 UTC
+# - MinIO: sync para backup externo
+# - Retenção: 30 dias
+#
+# MONITORAMENTO:
+# ==============
+# - Prometheus: métricas do backend
+# - Grafana: dashboards
+# - Loki: logs centralizados
+# - Sentry: errors
+# - Health checks: todos os serviços
