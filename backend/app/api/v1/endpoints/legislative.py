@@ -250,13 +250,41 @@ async def get_parliamentary_expenses(
     db: AsyncSession = Depends(get_db),
 ):
     """Gastos parlamentares (CEAP/cota)."""
-    legislator_ids = await _get_legislator_ids(slug, db)
-    if not legislator_ids:
-        return {"data": [], "metadata": LegislativeMetadata(availability="not_available").model_dump()}
-
-    query = select(ParliamentaryExpense).where(
-        ParliamentaryExpense.legislator_id.in_(legislator_ids)
+    # Get politician and extract Câmara ID from source_url
+    pol_result = await db.execute(
+        select(Politician).where(
+            Politician.slug == slug, Politician.is_public == True, Politician.deleted_at == None
+        )
     )
+    politician = pol_result.scalar_one_or_none()
+    if not politician:
+        raise NotFoundError(detail="Político não encontrado.")
+
+    # Extract camara_id from source_url (format: .../deputados/XXXXX)
+    camara_id = None
+    if politician.source_url and "deputados/" in str(politician.source_url):
+        parts = str(politician.source_url).split("/")
+        for i, part in enumerate(parts):
+            if part == "deputados" and i + 1 < len(parts):
+                camara_id = parts[i + 1]
+                break
+
+    if not camara_id:
+        # Try legislator profile as fallback
+        legislator_ids = await _get_legislator_ids(slug, db)
+        if not legislator_ids:
+            return {"data": [], "aggregates": {"total_net_amount": 0},
+                    "metadata": LegislativeMetadata(availability="not_available").model_dump()}
+
+        query = select(ParliamentaryExpense).where(
+            ParliamentaryExpense.legislator_id.in_(legislator_ids)
+        )
+    else:
+        # Search by external_id prefix (format: camara_id-year-month-doc)
+        query = select(ParliamentaryExpense).where(
+            ParliamentaryExpense.external_id.like(f"{camara_id}-%")
+        )
+
     if year:
         query = query.where(ParliamentaryExpense.year == year)
     if month:
@@ -273,16 +301,16 @@ async def get_parliamentary_expenses(
     expenses = result.scalars().all()
 
     # Aggregates
-    total_query = select(
-        sa_func.sum(ParliamentaryExpense.net_amount)
-    ).where(ParliamentaryExpense.legislator_id.in_(legislator_ids))
+    agg_query = select(sa_func.sum(ParliamentaryExpense.net_amount))
+    if camara_id:
+        agg_query = agg_query.where(ParliamentaryExpense.external_id.like(f"{camara_id}-%"))
     if year:
-        total_query = total_query.where(ParliamentaryExpense.year == year)
-    total_amount = (await db.execute(total_query)).scalar_one_or_none() or 0
+        agg_query = agg_query.where(ParliamentaryExpense.year == year)
+    total_amount = (await db.execute(agg_query)).scalar_one_or_none() or 0
 
     items = [
         {
-            "id": e.id, "year": e.year, "month": e.month,
+            "id": str(e.id), "year": e.year, "month": e.month,
             "category": e.category, "supplier_name": e.supplier_name,
             "gross_amount": float(e.gross_amount),
             "net_amount": float(e.net_amount),
