@@ -289,7 +289,7 @@ function getEmptyMessage(endpoint: string): string {
     case "election-results": return "Os resultados eleitorais ainda não foram importados.";
     case "propositions": return "Nenhuma proposição foi sincronizada para este mandato.";
     case "votes": return "Os registros de votações ainda estão em processamento.";
-    case "attendance": return "Os dados de presença ainda não foram sincronizados.";
+    case "attendance": return "A API oficial da Câmara não disponibiliza dados individuais de presença em formato importável. Este dado será adicionado quando uma fonte adequada estiver disponível.";
     case "parliamentary-expenses": return "Nenhuma despesa parlamentar encontrada para este político.";
     case "news": return "Nenhuma notícia revisada foi publicada para este político.";
     case "promises": return "As promessas de campanha ainda não foram avaliadas.";

@@ -110,7 +110,7 @@ async def sync_propositions_camara(db: AsyncSession, house, politician: Politici
 
 
 async def sync_votes_camara(db: AsyncSession, house, politician: Politician, camara_id: str, client: httpx.AsyncClient):
-    """Sync recent votes for this deputy."""
+    """Sync recent votes for this deputy using global /votacoes endpoint."""
     print(f"    Votações de {politician.full_name}...")
 
     # Get legislator record
@@ -141,10 +141,12 @@ async def sync_votes_camara(db: AsyncSession, house, politician: Politician, cam
         ))
         await db.flush()
 
-    # Fetch recent votes
-    resp = await client.get(f"{CAMARA_API}/deputados/{camara_id}/votacoes", params={"itens": 30, "ordem": "DESC"})
+    # Fetch recent nominal votes from global endpoint
+    resp = await client.get(f"{CAMARA_API}/votacoes", params={
+        "idLegislatura": 57, "ordem": "DESC", "ordenarPor": "dataHoraRegistro", "itens": 10
+    })
     if resp.status_code != 200:
-        print(f"      Erro votações: {resp.status_code}")
+        print(f"      Erro votações global: {resp.status_code}")
         return 0
 
     votes_data = resp.json().get("dados", [])
@@ -152,6 +154,9 @@ async def sync_votes_camara(db: AsyncSession, house, politician: Politician, cam
 
     for v in votes_data:
         ext_id = str(v.get("id", ""))
+        if not ext_id:
+            continue
+
         # Create or get vote event
         existing_event = await db.execute(
             select(LegislativeVoteEvent).where(
@@ -162,14 +167,14 @@ async def sync_votes_camara(db: AsyncSession, house, politician: Politician, cam
         if not event:
             event = LegislativeVoteEvent(
                 house_id=house.id, external_id=ext_id,
-                date=v.get("dataHoraInicio"), description=v.get("descricao"),
-                result=v.get("aprovacao"), is_nominal=True,
-                source_url=v.get("uri"),
+                date=v.get("dataHoraRegistro"), description=v.get("descricao"),
+                result=str(v.get("aprovacao", "")), is_nominal=True,
+                source_url=f"{CAMARA_API}/votacoes/{ext_id}",
             )
             db.add(event)
             await db.flush()
 
-        # Check if vote already recorded
+        # Check if vote already recorded for this legislator
         existing_vote = await db.execute(
             select(LegislatorVote).where(
                 LegislatorVote.vote_event_id == event.id, LegislatorVote.legislator_id == legislator.id
@@ -178,25 +183,39 @@ async def sync_votes_camara(db: AsyncSession, house, politician: Politician, cam
         if existing_vote.scalar_one_or_none():
             continue
 
-        # Get individual vote
+        # Get individual votes for this voting event
+        await asyncio.sleep(0.5)  # Rate limit
         vote_detail_resp = await client.get(f"{CAMARA_API}/votacoes/{ext_id}/votos")
-        if vote_detail_resp.status_code == 200:
-            all_votes = vote_detail_resp.json().get("dados", [])
-            my_vote = next((vv for vv in all_votes if str(vv.get("deputado_", {}).get("id")) == camara_id), None)
-            if my_vote:
-                original = my_vote.get("tipoVoto", "Ausente")
-                normalized = {"Sim": "yes", "Não": "no", "Abstenção": "abstention",
-                              "Obstrução": "obstruction", "Artigo 17": "art17"}.get(original, "absent")
-                db.add(LegislatorVote(
-                    vote_event_id=event.id, legislator_id=legislator.id,
-                    original_vote=original, normalized_vote=normalized,
-                    party_at_vote=politician.current_party_id and None,
-                    state_at_vote=politician.state_code,
-                ))
-                created += 1
+        if vote_detail_resp.status_code != 200:
+            continue
+
+        all_votes = vote_detail_resp.json().get("dados", [])
+        # Find this deputy's vote
+        my_vote = None
+        for vv in all_votes:
+            dep_info = vv.get("deputado_", {})
+            if str(dep_info.get("id", "")) == camara_id:
+                my_vote = vv
+                break
+
+        if my_vote:
+            original = my_vote.get("tipoVoto", "Ausente")
+            vote_map = {
+                "Sim": "yes", "Não": "no", "Abstenção": "abstention",
+                "Obstrução": "obstruction", "Art. 17": "art17",
+                "Presidente": "president", "-": "absent",
+            }
+            normalized = vote_map.get(original, "absent")
+            db.add(LegislatorVote(
+                vote_event_id=event.id, legislator_id=legislator.id,
+                original_vote=original, normalized_vote=normalized,
+                party_at_vote=my_vote.get("deputado_", {}).get("siglaPartido"),
+                state_at_vote=my_vote.get("deputado_", {}).get("siglaUf"),
+            ))
+            created += 1
 
     await db.flush()
-    print(f"      {created} votos registrados (eventos: {len(votes_data)})")
+    print(f"      {created} votos registrados (votações consultadas: {len(votes_data)})")
     return created
 
 
@@ -298,7 +317,7 @@ async def main():
                     print(f"  ⚠ Sem ID da Câmara: {politician.full_name}")
                     continue
 
-                print(f"\n  [{politician.full_name}] (ID: {camara_id})")
+    print(f"\n  [{politician.full_name}] (ID: {camara_id})")
                 total_props += await sync_propositions_camara(db, house_cd, politician, camara_id, client)
                 total_votes += await sync_votes_camara(db, house_cd, politician, camara_id, client)
                 total_committees += await sync_committees_camara(db, house_cd, politician, camara_id, client)
