@@ -80,6 +80,7 @@ class Settings(BaseSettings):
     transparencia_api_key: str = ""
 
     # News
+    google_news_rss_enabled: bool = True
     news_api_key: str = ""
     gdelt_api_url: str = "https://api.gdeltproject.org/api/v2"
     bing_news_api_key: str = ""
