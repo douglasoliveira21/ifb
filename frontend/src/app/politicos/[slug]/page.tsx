@@ -28,7 +28,7 @@ interface PoliticianDetail {
 }
 
 type TabId = "overview" | "electoral" | "assets" | "campaign" | "results" |
-  "propositions" | "votes" | "attendance" | "expenses" | "news" | "promises" | "judicial";
+  "propositions" | "votes" | "attendance" | "expenses" | "committees" | "news" | "promises" | "judicial";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview", label: "Visão geral" },
@@ -40,6 +40,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "votes", label: "Votações" },
   { id: "attendance", label: "Presença" },
   { id: "expenses", label: "Gastos" },
+  { id: "committees", label: "Comissões" },
   { id: "news", label: "Notícias" },
   { id: "promises", label: "Promessas" },
   { id: "judicial", label: "Processos" },
@@ -122,6 +123,7 @@ export default function PoliticianProfilePage() {
         {activeTab === "votes" && <ApiTab slug={slug} endpoint="votes" title="Votações" />}
         {activeTab === "attendance" && <ApiTab slug={slug} endpoint="attendance" title="Presença" />}
         {activeTab === "expenses" && <ExpensesTab slug={slug} />}
+        {activeTab === "committees" && <ApiTab slug={slug} endpoint="committees" title="Comissões" />}
         {activeTab === "news" && <ApiTab slug={slug} endpoint="news" title="Notícias" />}
         {activeTab === "promises" && <ApiTab slug={slug} endpoint="promises" title="Promessas de Campanha" />}
         {activeTab === "judicial" && <ApiTab slug={slug} endpoint="judicial-cases" title="Processos Judiciais" disclaimer="A existência de processo não implica culpa." />}
@@ -307,6 +309,7 @@ function getTableHeaders(endpoint: string): string[] {
     case "votes": return ["Data", "Descrição", "Voto", "Resultado"];
     case "attendance": return ["Data", "Tipo", "Status", "Justificativa"];
     case "parliamentary-expenses": return ["Ano", "Mês", "Categoria", "Fornecedor", "Valor"];
+    case "committees": return ["Comissão", "Sigla", "Papel"];
     case "news": return ["Data", "Título", "Impacto", "Confiança"];
     case "promises": return ["Promessa", "Categoria", "Status", "Progresso"];
     case "judicial-cases": return ["Tribunal", "Classe", "Papel", "Status"];
@@ -334,6 +337,8 @@ function getTableCells(endpoint: string, item: any): string[] {
       return [item.date?.slice(0, 10) || item.session_date || "—", item.session_type || "—", item.status || item.attendance_status || "—", item.justification || "—"];
     case "parliamentary-expenses":
       return [item.year, item.month, (item.category || "").slice(0, 25), (item.supplier_name || "—").slice(0, 20), formatCurrency(item.net_amount || item.gross_amount)];
+    case "committees":
+      return [item.committee_name || "—", item.acronym || "—", item.role || "Membro"];
     case "news":
       return [item.published_at?.slice(0, 10) || "—", (item.title || "").slice(0, 40), item.reputational_impact || "—", item.confidence ? `${Math.round(item.confidence * 100)}%` : "—"];
     case "promises":
