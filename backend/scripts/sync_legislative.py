@@ -7,7 +7,11 @@ Importa proposições, votações e comissões de deputados piloto.
 
 import asyncio
 import sys
+import os
 from datetime import UTC, datetime
+
+# Fix import path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import httpx
 from sqlalchemy import select
