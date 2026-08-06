@@ -246,18 +246,27 @@ class AuthService:
         user_agent: str | None = None,
     ) -> tuple[str, str, str]:
         """Creates session with tokens. Returns (access, refresh, session_id)."""
-        # Load roles explicitly to avoid lazy loading issues
-        from sqlalchemy.orm import selectinload
-        from sqlalchemy import select as sa_select
-        user_fresh = await self.db.execute(
-            sa_select(User).where(User.id == user.id).options(selectinload(User.roles))
-        )
-        user_with_roles = user_fresh.scalar_one()
+        # Get roles - try eager loaded first, fallback to empty
         roles = []
-        for ur in user_with_roles.roles:
-            role = ur.role
-            if role:
-                roles.append(role.name)
+        try:
+            for ur in user.roles:
+                if ur.role:
+                    roles.append(ur.role.name)
+        except Exception:
+            # If lazy loading fails, query explicitly
+            from sqlalchemy import select as sa_select
+            from sqlalchemy.orm import selectinload
+            result = await self.db.execute(
+                sa_select(UserRole).where(UserRole.user_id == user.id)
+            )
+            user_roles = result.scalars().all()
+            for ur in user_roles:
+                role_result = await self.db.execute(
+                    sa_select(Role).where(Role.id == ur.role_id)
+                )
+                role = role_result.scalar_one_or_none()
+                if role:
+                    roles.append(role.name)
 
         access_token = create_access_token(
             subject=str(user.id),

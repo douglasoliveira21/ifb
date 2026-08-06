@@ -112,12 +112,17 @@ async def login(
     ua: str | None = Depends(get_user_agent),
 ):
     """Login. Retorna tokens em cookies HttpOnly."""
-    # Rate limit
-    key = build_rate_key("login", ip or "unknown", data.email)
-    limit = RATE_LIMITS["login"]
-    if await rate_limiter.is_rate_limited(key, limit["max_attempts"], limit["window_seconds"]):
-        raise UnauthorizedError(detail="Credenciais inválidas.")
-    await rate_limiter.increment(key, limit["window_seconds"])
+    # Rate limit (tolerant to Redis failures)
+    try:
+        key = build_rate_key("login", ip or "unknown", data.email)
+        limit = RATE_LIMITS["login"]
+        if await rate_limiter.is_rate_limited(key, limit["max_attempts"], limit["window_seconds"]):
+            raise UnauthorizedError(detail="Credenciais inválidas.")
+        await rate_limiter.increment(key, limit["window_seconds"])
+    except UnauthorizedError:
+        raise
+    except Exception:
+        pass  # Redis unavailable - allow login attempt
 
     access_token, refresh_token, session_id, mfa_required = await auth_service.login(
         email=data.email,
