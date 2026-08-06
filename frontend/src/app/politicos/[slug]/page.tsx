@@ -117,7 +117,7 @@ export default function PoliticianProfilePage() {
         {activeTab === "overview" && <OverviewTab politician={politician} />}
         {activeTab === "electoral" && <ApiTab slug={slug} endpoint="candidacies" title="Histórico Eleitoral" />}
         {activeTab === "assets" && <ApiTab slug={slug} endpoint="assets" title="Bens Declarados" disclaimer="Valores declarados à Justiça Eleitoral. Não representam necessariamente o patrimônio atual." />}
-        {activeTab === "campaign" && <ApiTab slug={slug} endpoint="campaign/revenues" title="Receitas de Campanha" />}
+        {activeTab === "campaign" && <CampaignTab slug={slug} />}
         {activeTab === "results" && <ApiTab slug={slug} endpoint="election-results" title="Resultados Eleitorais" />}
         {activeTab === "propositions" && <ApiTab slug={slug} endpoint="propositions" title="Projetos de Lei" />}
         {activeTab === "votes" && <ApiTab slug={slug} endpoint="votes" title="Votações" />}
@@ -365,6 +365,112 @@ function formatLabel(key: string): string {
     total_confirmed_cases: "Processos",
   };
   return labels[key] || key.replace(/_/g, " ");
+}
+
+function CampaignTab({ slug }: { slug: string }) {
+  const [revenues, setRevenues] = useState<any>(null);
+  const [expenses, setExpenses] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      fetch(`${API_URL}/api/v1/politicians/${slug}/campaign/revenues`).then(r => r.ok ? r.json() : null),
+      fetch(`${API_URL}/api/v1/politicians/${slug}/campaign/expenses`).then(r => r.ok ? r.json() : null),
+    ]).then(([rev, exp]) => { setRevenues(rev); setExpenses(exp); })
+      .finally(() => setLoading(false));
+  }, [slug]);
+
+  if (loading) return <div className="bg-white rounded-lg border border-ifb-gray-medium p-6 animate-pulse"><div className="h-4 bg-gray-200 rounded w-1/3 mb-4" /></div>;
+
+  const revItems = revenues?.data || [];
+  const expItems = expenses?.data || [];
+  const totalRev = revItems.reduce((s: number, r: any) => s + (r.amount || 0), 0);
+  const totalExp = expItems.reduce((s: number, e: any) => s + (e.amount || 0), 0);
+
+  return (
+    <div className="space-y-6">
+      {/* Summary */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white rounded-lg border border-ifb-gray-medium p-4 text-center">
+          <p className="text-lg font-bold text-ifb-green">{formatCurrency(totalRev)}</p>
+          <p className="text-xs text-gray-500">Total de receitas</p>
+        </div>
+        <div className="bg-white rounded-lg border border-ifb-gray-medium p-4 text-center">
+          <p className="text-lg font-bold text-ifb-red">{formatCurrency(totalExp)}</p>
+          <p className="text-xs text-gray-500">Total de despesas</p>
+        </div>
+        <div className="bg-white rounded-lg border border-ifb-gray-medium p-4 text-center">
+          <p className={`text-lg font-bold ${totalRev - totalExp >= 0 ? 'text-ifb-black' : 'text-ifb-red'}`}>
+            {formatCurrency(totalRev - totalExp)}
+          </p>
+          <p className="text-xs text-gray-500">Saldo</p>
+        </div>
+      </div>
+
+      {/* Revenues */}
+      <div className="bg-white rounded-lg border border-ifb-gray-medium p-6">
+        <h3 className="text-lg font-semibold text-ifb-black mb-4">Receitas de Campanha</h3>
+        {revItems.length === 0 ? (
+          <p className="text-sm text-gray-500">Nenhuma receita importada para esta eleição.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-ifb-gray-medium text-left">
+                <th className="py-2 px-2 text-xs font-semibold text-gray-600">Origem</th>
+                <th className="py-2 px-2 text-xs font-semibold text-gray-600">Tipo</th>
+                <th className="py-2 px-2 text-xs font-semibold text-gray-600 text-right">Valor</th>
+              </tr></thead>
+              <tbody>
+                {revItems.map((r: any, i: number) => (
+                  <tr key={i} className="border-b border-ifb-gray-light">
+                    <td className="py-2 px-2 text-gray-700">{r.donor_name || '—'}</td>
+                    <td className="py-2 px-2 text-gray-600">{r.revenue_type || '—'}</td>
+                    <td className="py-2 px-2 text-right font-medium">{formatCurrency(r.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Expenses */}
+      <div className="bg-white rounded-lg border border-ifb-gray-medium p-6">
+        <h3 className="text-lg font-semibold text-ifb-black mb-4">Despesas de Campanha</h3>
+        {expItems.length === 0 ? (
+          <p className="text-sm text-gray-500">Nenhuma despesa importada para esta eleição.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-ifb-gray-medium text-left">
+                <th className="py-2 px-2 text-xs font-semibold text-gray-600">Categoria</th>
+                <th className="py-2 px-2 text-xs font-semibold text-gray-600 hidden sm:table-cell">Fornecedor</th>
+                <th className="py-2 px-2 text-xs font-semibold text-gray-600 text-right">Valor</th>
+              </tr></thead>
+              <tbody>
+                {expItems.map((e: any, i: number) => (
+                  <tr key={i} className="border-b border-ifb-gray-light">
+                    <td className="py-2 px-2 text-gray-700">{e.expense_type || '—'}</td>
+                    <td className="py-2 px-2 text-gray-600 hidden sm:table-cell">{e.supplier_name || '—'}</td>
+                    <td className="py-2 px-2 text-right font-medium">{formatCurrency(e.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Disclaimer */}
+      <div className="bg-ifb-yellow/10 border border-ifb-yellow/30 rounded-lg p-4">
+        <p className="text-xs text-gray-700">
+          Os valores apresentados correspondem à prestação de contas eleitoral disponibilizada pelo TSE para a eleição selecionada.
+          A ausência de registros não significa ausência de movimentação financeira.
+        </p>
+      </div>
+      <p className="text-xs text-gray-400">Fonte: Tribunal Superior Eleitoral — Dados Abertos</p>
+    </div>
+  );
 }
 
 function ExpensesTab({ slug }: { slug: string }) {
