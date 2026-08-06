@@ -305,7 +305,7 @@ async def main():
             print(f"    Salvos: {stats['saved']}, Duplicados: {stats['duplicates']}")
 
             # Classify if requested
-            if CLASSIFY and stats["saved"] > 0:
+            if CLASSIFY:
                 # Get unclassified articles for this politician
                 unclassified = await db.execute(
                     select(NewsArticle).join(NewsMention).where(
