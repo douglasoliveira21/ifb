@@ -32,6 +32,19 @@ CLASSIFY = "--classify" in sys.argv
 LIMIT = 5
 
 
+def _parse_gdelt_date(date_str: str | None) -> datetime | None:
+    """Parse GDELT date format: 20260620T151500Z"""
+    if not date_str:
+        return None
+    try:
+        from datetime import datetime as dt
+        # Format: YYYYMMDDTHHMMSSz
+        cleaned = date_str.replace("Z", "").replace("z", "")
+        return dt.strptime(cleaned, "%Y%m%dT%H%M%S").replace(tzinfo=UTC)
+    except (ValueError, AttributeError):
+        return None
+
+
 async def collect_gdelt(query: str, max_results: int = 20) -> list[dict]:
     """Fetch news from GDELT."""
     params = {
@@ -83,7 +96,7 @@ async def save_articles(db: AsyncSession, articles: list[dict], politician: Poli
             original_url=url,
             image_url=art.get("socialimage"),
             language="pt",
-            published_at=art.get("seendate"),
+            published_at=_parse_gdelt_date(art.get("seendate")),
             collected_at=datetime.now(UTC),
             content_hash=content_hash,
             status="collected",
@@ -242,7 +255,7 @@ async def main():
                         total_stats["classified"] += 1
                     await asyncio.sleep(1)  # Rate limit AI calls
 
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(3)  # Rate limit GDELT (avoid 429)
 
         await db.commit()
 
