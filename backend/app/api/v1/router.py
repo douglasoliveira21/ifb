@@ -17,6 +17,7 @@ from app.api.v1.endpoints import (
     news,
     politicians,
     promises,
+    stats,
     transparency,
     users,
 )
@@ -25,6 +26,9 @@ api_router = APIRouter()
 
 # Health checks
 api_router.include_router(health.router)
+
+# Estatísticas públicas
+api_router.include_router(stats.router)
 
 # Autenticação
 api_router.include_router(auth.router)

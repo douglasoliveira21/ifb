@@ -5,8 +5,8 @@ import Link from "next/link";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-/* Foto oficial do Congresso Nacional — Wikimedia Commons (CC-BY 2.0, Senado Federal) */
-const HERO_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Congresso_Nacional_-_50495053552.jpg/1280px-Congresso_Nacional_-_50495053552.jpg";
+/* Foto oficial do Congresso Nacional — asset local */
+const HERO_IMAGE = "/images/congresso-nacional.png";
 
 /* Fotos placeholder dos políticos do ranking (API da Câmara) */
 const RANKING_PHOTOS: Record<string, string> = {
@@ -28,9 +28,9 @@ export default function HomePage() {
   const [stats, setStats] = useState<any>(null);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/v1/politicians?limit=1`)
+    fetch(`${API_URL}/api/v1/stats`)
       .then((r) => r.json())
-      .then((d) => setStats({ total: d.total }))
+      .then(setStats)
       .catch(() => {});
   }, []);
 
@@ -126,11 +126,11 @@ export default function HomePage() {
         <div className="max-w-[1440px] mx-auto px-6 lg:px-12 py-5">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
             {[
-              { value: stats?.total || "594", label: "Políticos\ncadastrados", icon: "👤" },
-              { value: "10.431", label: "Proposições e\nmatérias", icon: "📋" },
-              { value: "190", label: "Votações\nregistradas", icon: "✓" },
-              { value: "2.612", label: "Comissões\nparlamentares", icon: "🏛" },
-              { value: "R$ 932 mi+", label: "Gastos\nparlamentares", icon: "💰" },
+              { value: stats?.politicians?.toLocaleString("pt-BR") || "—", label: "Políticos\ncadastrados", icon: "👤" },
+              { value: stats?.propositions?.toLocaleString("pt-BR") || "—", label: "Proposições e\nmatérias", icon: "📋" },
+              { value: stats?.votes?.toLocaleString("pt-BR") || "—", label: "Votações\nregistradas", icon: "✓" },
+              { value: stats?.committees?.toLocaleString("pt-BR") || "—", label: "Comissões\nparlamentares", icon: "🏛" },
+              { value: stats?.expenses_total ? `R$ ${(stats.expenses_total / 1_000_000).toFixed(0)} mi+` : "—", label: "Gastos\nparlamentares", icon: "💰" },
             ].map((s, i) => (
               <div key={i} className="flex items-center gap-3 bg-[#FAFAFA] border border-[#E9ECEF] rounded-[12px] px-4 py-3">
                 <div className="w-[36px] h-[36px] bg-[#FFF8E1] rounded-full flex items-center justify-center flex-shrink-0 text-[14px]">
