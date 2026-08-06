@@ -4,16 +4,17 @@
 
 @layer base {
   html {
-    font-family: var(--font-inter), system-ui, sans-serif;
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
     overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   body {
-    @apply bg-white text-ifb-black;
+    @apply bg-ifb-bg text-ifb-gray-900;
     overflow-x: hidden;
   }
 
-  /* Foco acessível */
   *:focus-visible {
     @apply outline-2 outline-offset-2 outline-ifb-yellow;
   }
@@ -21,18 +22,31 @@
 
 @layer components {
   .btn-primary {
-    @apply bg-ifb-yellow text-ifb-black px-6 py-3 rounded-md font-semibold 
-           hover:bg-ifb-yellow-light transition-colors duration-200
-           focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-ifb-yellow;
+    @apply bg-ifb-yellow text-ifb-black px-6 py-3 rounded-ifb-btn font-semibold
+           hover:bg-ifb-yellow-hover transition-all duration-200 text-sm;
   }
 
   .btn-secondary {
-    @apply border-2 border-ifb-black text-ifb-black px-6 py-3 rounded-md font-semibold
-           hover:bg-ifb-black hover:text-white transition-colors duration-200;
+    @apply bg-white border border-ifb-gray-200 text-ifb-gray-900 px-6 py-3 rounded-ifb-btn font-medium
+           hover:bg-ifb-gray-50 transition-all duration-200 text-sm;
   }
 
   .card {
-    @apply bg-white border border-ifb-gray-medium rounded-lg p-6 
-           hover:shadow-sm transition-shadow duration-200;
+    @apply bg-white border border-ifb-gray-200 rounded-ifb p-6 shadow-ifb
+           hover:shadow-ifb-md transition-shadow duration-200;
+  }
+
+  .card-lg {
+    @apply bg-white border border-ifb-gray-200 rounded-ifb-lg p-8 shadow-ifb;
+  }
+
+  .input {
+    @apply w-full px-4 py-3 border border-ifb-gray-200 rounded-ifb-btn text-sm
+           focus:outline-none focus:ring-2 focus:ring-ifb-yellow focus:border-transparent
+           placeholder:text-ifb-gray-400 transition-all duration-200;
+  }
+
+  .container-ifb {
+    @apply max-w-ifb mx-auto px-4 sm:px-6 lg:px-8;
   }
 }
