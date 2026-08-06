@@ -68,6 +68,49 @@ async def collect_gdelt(query: str, max_results: int = 20) -> list[dict]:
             return []
 
 
+async def collect_google_news(query: str, max_results: int = 20) -> list[dict]:
+    """Fetch news from Google News RSS (primary, no rate limit)."""
+    import xml.etree.ElementTree as ET
+    from urllib.parse import quote
+
+    url = f"https://news.google.com/rss/search?q={quote(query)}&hl=pt-BR&gl=BR&ceid=BR:pt-419"
+
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+        try:
+            resp = await client.get(url)
+            if resp.status_code != 200:
+                print(f"  Google News RSS status: {resp.status_code}")
+                return []
+
+            root = ET.fromstring(resp.text)
+            articles = []
+            for item in root.findall(".//item")[:max_results]:
+                title = item.findtext("title", "")
+                link = item.findtext("link", "")
+                pub_date = item.findtext("pubDate", "")
+                source = item.findtext("source", "")
+
+                parsed_date = None
+                if pub_date:
+                    try:
+                        from email.utils import parsedate_to_datetime
+                        parsed_date = parsedate_to_datetime(pub_date)
+                    except Exception:
+                        pass
+
+                articles.append({
+                    "title": title,
+                    "url": link,
+                    "source_name": source,
+                    "published_at": parsed_date,
+                    "provider": "google_news",
+                })
+            return articles
+        except Exception as e:
+            print(f"  Google News error: {e}")
+            return []
+
+
 async def save_articles(db: AsyncSession, articles: list[dict], politician: Politician) -> dict:
     """Save articles, deduplicate, create mentions."""
     stats = {"collected": 0, "duplicates": 0, "saved": 0}
@@ -88,15 +131,20 @@ async def save_articles(db: AsyncSession, articles: list[dict], politician: Poli
             stats["duplicates"] += 1
             continue
 
+        # Parse published_at
+        pub_at = art.get("published_at")
+        if isinstance(pub_at, str):
+            pub_at = _parse_gdelt_date(pub_at)
+
         article = NewsArticle(
-            provider="gdelt",
+            provider=art.get("provider", "google_news"),
             external_id=hashlib.md5(url.encode()).hexdigest(),
             title=(art.get("title") or "")[:1000],
             canonical_url=url,
             original_url=url,
-            image_url=art.get("socialimage"),
+            image_url=art.get("socialimage") or art.get("image_url"),
             language="pt",
-            published_at=_parse_gdelt_date(art.get("seendate")),
+            published_at=pub_at,
             collected_at=datetime.now(UTC),
             content_hash=content_hash,
             status="collected",
@@ -228,9 +276,26 @@ async def main():
             if pol.ballot_name and pol.ballot_name != pol.full_name:
                 query += f' OR "{pol.ballot_name}"'
 
-            # Collect from GDELT
-            articles = await collect_gdelt(query, max_results=15)
-            print(f"    GDELT: {len(articles)} artigos encontrados")
+            # Collect from Google News RSS (primary) then GDELT (fallback)
+            articles_raw = await collect_google_news(query, max_results=15)
+            source = "Google News"
+            if not articles_raw:
+                articles_raw = await collect_gdelt(query, max_results=15)
+                source = "GDELT"
+            print(f"    {source}: {len(articles_raw)} artigos encontrados")
+
+            # Normalize format for save_articles
+            articles = []
+            for a in articles_raw:
+                if a.get("provider") == "google_news":
+                    articles.append(a)  # Already in right format
+                else:
+                    articles.append({
+                        "title": a.get("title", ""),
+                        "url": a.get("url", ""),
+                        "published_at": _parse_gdelt_date(a.get("seendate")),
+                        "provider": "gdelt",
+                    })
 
             # Save
             stats = await save_articles(db, articles, pol)
