@@ -37,21 +37,25 @@ celery_app.conf.update(
     },
     # Beat schedule
     beat_schedule={
-        "camara-sync-expenses-daily": {
-            "task": "camara.sync_expenses",
+        # Notícias — a cada 2 horas
+        "news-collect-batch": {
+            "task": "news.collect_all_active_politicians",
+            "schedule": crontab(minute=0, hour="*/2"),
+        },
+        # Câmara — proposições diariamente às 3h
+        "camara-sync-propositions-daily": {
+            "task": "camara.sync_propositions",
             "schedule": crontab(hour=3, minute=0),
         },
-        "camara-sync-propositions-hourly": {
-            "task": "camara.sync_propositions",
-            "schedule": crontab(minute=30),
-        },
-        "senado-sync-daily": {
-            "task": "senado.sync_senators",
+        # Câmara — despesas diariamente às 4h
+        "camara-sync-expenses-daily": {
+            "task": "camara.sync_expenses",
             "schedule": crontab(hour=4, minute=0),
         },
-        "news-collect-hourly": {
-            "task": "news.collect_all_active_politicians",
-            "schedule": crontab(minute=0),
+        # Senado — diariamente às 5h
+        "senado-sync-daily": {
+            "task": "senado.sync_senators",
+            "schedule": crontab(hour=5, minute=0),
         },
     },
 )
