@@ -90,11 +90,16 @@ async def create_superadmin() -> None:
             assigned_by="CLI bootstrap",
         )
         db.add(user_role)
+
+        # Capture ID before commit closes session
+        user_id = user.id
+        user_email = email
+
         await db.commit()
 
         print(f"\n✓ Superadministrador criado com sucesso!")
-        print(f"  E-mail: {email}")
-        print(f"  ID: {user.id}")
+        print(f"  E-mail: {user_email}")
+        print(f"  ID: {user_id}")
         print(f"\n⚠ Ative o MFA no primeiro login.")
 
     await engine.dispose()
