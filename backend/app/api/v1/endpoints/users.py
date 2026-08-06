@@ -1,12 +1,14 @@
 """Endpoints de perfil do usuário."""
 
 from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.dependencies import (
     get_auth_service,
     get_client_ip,
     get_current_user,
 )
+from app.core.database import get_db
 from app.models.user import User
 from app.schemas.auth import (
     MessageResponse,
@@ -19,9 +21,22 @@ router = APIRouter(prefix="/users", tags=["Usuários"])
 
 
 @router.get("/me", response_model=UserMeResponse)
-async def get_me(user: User = Depends(get_current_user)):
+async def get_me(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """Retorna dados do usuário autenticado."""
-    roles = [ur.role.name for ur in user.roles]
+    from sqlalchemy import select
+    from app.models.user import UserRole, Role
+
+    # Query roles explicitly to avoid lazy loading
+    result = await db.execute(
+        select(Role.name)
+        .join(UserRole, UserRole.role_id == Role.id)
+        .where(UserRole.user_id == user.id)
+    )
+    roles = [row for row in result.scalars().all()]
+
     return UserMeResponse(
         id=user.id,
         email=user.email,
