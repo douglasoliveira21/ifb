@@ -7,8 +7,8 @@
 FROM node:20-alpine AS deps
 
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm ci --only=production
+COPY package.json ./
+RUN npm install
 
 # --- Stage 2: Builder ---
 FROM node:20-alpine AS builder
@@ -43,8 +43,5 @@ USER ifb
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
 
 CMD ["node", "server.js"]
