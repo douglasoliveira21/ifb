@@ -107,15 +107,19 @@ async def sync_materias(db: AsyncSession, house, politician: Politician, senado_
         return 0
 
     data = resp.json()
-    # Navigate nested structure
-    autorias = data.get("MateriasAutoria", {}).get("Parlamentar", {}).get("Autorias", {}).get("Autoria", [])
+    # Navigate nested structure - key is MateriasAutoriaParlamentar
+    parl = data.get("MateriasAutoriaParlamentar", data.get("MateriasAutoria", {}))
+    if isinstance(parl, dict):
+        parl = parl.get("Parlamentar", parl)
+    autorias_container = parl.get("Autorias", {}) if isinstance(parl, dict) else {}
+    autorias = autorias_container.get("Autoria", []) if isinstance(autorias_container, dict) else []
     if isinstance(autorias, dict):
         autorias = [autorias]
 
     created = 0
     for a in autorias[:50]:
-        materia = a.get("Materia", {})
-        ext_id = str(materia.get("CodigoMateria", ""))
+        materia = a.get("Materia", a)
+        ext_id = str(materia.get("Codigo", "") or materia.get("CodigoMateria", ""))
         if not ext_id:
             continue
 
@@ -129,11 +133,11 @@ async def sync_materias(db: AsyncSession, house, politician: Politician, senado_
 
         prop = LegislativeProposition(
             house_id=house.id, external_id=ext_id,
-            type_acronym=materia.get("SiglaSubtipoMateria", ""),
-            number=int(materia.get("NumeroMateria", 0)) if materia.get("NumeroMateria") else None,
-            year=int(materia.get("AnoMateria", 0)) if materia.get("AnoMateria") else None,
-            title=(materia.get("EmentaMateria") or "")[:1000],
-            status=materia.get("NomeSubtipoMateria"),
+            type_acronym=materia.get("Sigla", "") or materia.get("SiglaSubtipoMateria", ""),
+            number=int(materia.get("Numero", 0) or materia.get("NumeroMateria", 0) or 0) or None,
+            year=int(materia.get("Ano", 0) or materia.get("AnoMateria", 0) or 0) or None,
+            title=(materia.get("Ementa") or materia.get("EmentaMateria") or "")[:1000],
+            status=materia.get("DescricaoIdentificacao"),
             source_url=f"https://www25.senado.leg.br/web/atividade/materias/-/materia/{ext_id}",
             last_synced_at=datetime.now(UTC),
         )
@@ -297,7 +301,6 @@ async def sync_speeches_senado(db: AsyncSession, house, politician: Politician, 
     print(f"    Discursos de {politician.full_name}...")
 
     resp = await client.get(f"{SENADO_API}/senador/{senado_code}/discursos",
-                            params={"dataInicio": "01/01/2026", "dataFim": "06/08/2026"},
                             headers={"Accept": "application/json"})
     if resp.status_code != 200:
         print(f"      Erro discursos: {resp.status_code}")
@@ -305,7 +308,12 @@ async def sync_speeches_senado(db: AsyncSession, house, politician: Politician, 
 
     data = resp.json()
     # Navigate nested JSON
-    discursos_path = data.get("DiscursosParlamentar", {}).get("Parlamentar", {}).get("Pronunciamentos", {}).get("Pronunciamento", [])
+    parl = data.get("DiscursosParlamentar", {}).get("Parlamentar", {})
+    pronunc = parl.get("Pronunciamentos")
+    if not pronunc or not isinstance(pronunc, dict):
+        print(f"      Sem discursos disponíveis")
+        return 0
+    discursos_path = pronunc.get("Pronunciamento", [])
     if isinstance(discursos_path, dict):
         discursos_path = [discursos_path]
 
