@@ -66,7 +66,7 @@ class AiClient:
 
         try:
             response = await client.post(
-                "https://api.openai.com/v1/chat/completions",
+                f"{settings.openai_api_base_url}/v1/chat/completions",
                 json=payload,
             )
             response.raise_for_status()

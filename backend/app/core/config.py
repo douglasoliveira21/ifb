@@ -55,9 +55,10 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: list[str] = ["http://localhost:3000"]
 
-    # OpenAI
+    # AI (DeepSeek / OpenAI-compatible)
     openai_api_key: str = ""
-    openai_model: str = "gpt-4o-mini"
+    openai_api_base_url: str = "https://api.deepseek.com"
+    openai_model: str = "deepseek-v4-flash"
 
     # External APIs
     tse_api_url: str = "https://divulgacandcontas.tse.jus.br/divulga/rest/v1"
