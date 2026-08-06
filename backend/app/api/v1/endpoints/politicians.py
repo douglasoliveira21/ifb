@@ -41,8 +41,12 @@ async def list_politicians(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     service: PoliticianService = Depends(_get_politician_service),
+    db: AsyncSession = Depends(get_db),
 ):
     """Lista e pesquisa políticos públicos."""
+    from sqlalchemy import select as sa_select
+    from app.models.politician import PoliticalParty, PoliticalPosition
+
     politicians, total = await service.search(
         q=q, party=party, state=state, position=position,
         page=page, limit=limit, include_unpublished=False,
@@ -52,18 +56,31 @@ async def list_politicians(
     items = []
     for p in politicians:
         party_resp = None
-        if p.current_party:
-            party_resp = PartyResponse(
-                id=p.current_party.id, name=p.current_party.name,
-                acronym=p.current_party.acronym,
-                electoral_number=p.current_party.electoral_number,
-                logo_url=p.current_party.logo_url, status=p.current_party.status,
+        if p.current_party_id:
+            party_result = await db.execute(
+                sa_select(PoliticalParty).where(PoliticalParty.id == p.current_party_id)
             )
+            party_obj = party_result.scalar_one_or_none()
+            if party_obj:
+                party_resp = PartyResponse(
+                    id=party_obj.id, name=party_obj.name,
+                    acronym=party_obj.acronym,
+                    electoral_number=party_obj.electoral_number,
+                    logo_url=party_obj.logo_url, status=party_obj.status,
+                )
+
+        position_name = None
+        if p.current_position_id:
+            pos_result = await db.execute(
+                sa_select(PoliticalPosition.name).where(PoliticalPosition.id == p.current_position_id)
+            )
+            position_name = pos_result.scalar_one_or_none()
+
         items.append(PoliticianListItem(
             id=p.id, full_name=p.full_name, ballot_name=p.ballot_name,
             slug=p.slug, photo_url=p.photo_url, current_status=p.current_status,
             current_party=party_resp,
-            current_position_name=p.current_position.name if p.current_position else None,
+            current_position_name=position_name,
             state_code=p.state_code, city_name=p.city_name,
         ))
 
