@@ -246,7 +246,19 @@ class AuthService:
         user_agent: str | None = None,
     ) -> tuple[str, str, str]:
         """Creates session with tokens. Returns (access, refresh, session_id)."""
-        roles = [ur.role.name for ur in user.roles]
+        # Load roles explicitly to avoid lazy loading issues
+        from sqlalchemy.orm import selectinload
+        from sqlalchemy import select as sa_select
+        user_fresh = await self.db.execute(
+            sa_select(User).where(User.id == user.id).options(selectinload(User.roles))
+        )
+        user_with_roles = user_fresh.scalar_one()
+        roles = []
+        for ur in user_with_roles.roles:
+            role = ur.role
+            if role:
+                roles.append(role.name)
+
         access_token = create_access_token(
             subject=str(user.id),
             extra_claims={"roles": roles, "mfa_verified": True},
