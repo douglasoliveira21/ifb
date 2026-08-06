@@ -132,15 +132,20 @@ async def main():
 
         # 8. Despesas parlamentares
         print("\n[8] DESPESAS IMPORTADAS")
-        from sqlalchemy import select, func
-        from app.core.database import async_session_factory
-        from app.models.legislative import ParliamentaryExpense
-
-        async with async_session_factory() as db:
-            count = (await db.execute(
-                select(func.count(ParliamentaryExpense.id))
-            )).scalar_one()
-            report("Despesas no banco", "OK" if count > 0 else "WARN", f"total={count}")
+        r8 = await client.get("/api/v1/politicians?limit=1")
+        if r8.status_code == 200 and r8.json().get("items"):
+            slug8 = r8.json()["items"][0]["slug"]
+            r_exp = await client.get(f"/api/v1/politicians/{slug8}/parliamentary-expenses?limit=1")
+            if r_exp.status_code == 200:
+                exp_data = r_exp.json()
+                exp_count = len(exp_data.get("data", []))
+                total_amount = exp_data.get("aggregates", {}).get("total_net_amount", 0)
+                report("Despesas via API", "OK" if exp_count > 0 else "WARN",
+                       f"items={exp_count}, total=R${total_amount:,.2f}")
+            else:
+                report("Despesas via API", "FAIL", f"status={r_exp.status_code}")
+        else:
+            report("Despesas via API", "WARN", "Sem político para testar")
 
     # Summary
     print("\n" + "=" * 60)

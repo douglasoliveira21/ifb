@@ -231,8 +231,7 @@ function ApiTab({ slug, endpoint, title, disclaimer }: { slug: string; endpoint:
 
       {isEmpty ? (
         <div className="text-center py-8">
-          <p className="text-gray-500">Nenhum dado disponível para este político.</p>
-          <p className="text-xs text-gray-400 mt-1">Dados em fase de importação ou indisponíveis na fonte.</p>
+          <p className="text-gray-500">{getEmptyMessage(endpoint)}</p>
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -277,6 +276,24 @@ function ApiTab({ slug, endpoint, title, disclaimer }: { slug: string; endpoint:
       )}
     </div>
   );
+}
+
+function getEmptyMessage(endpoint: string): string {
+  switch (endpoint) {
+    case "candidacies": return "Os dados eleitorais deste perfil ainda não foram importados do TSE.";
+    case "assets": return "O patrimônio declarado ainda não foi importado para este político.";
+    case "campaign/revenues": return "As receitas de campanha ainda não foram importadas.";
+    case "campaign/expenses": return "As despesas de campanha ainda não foram importadas.";
+    case "election-results": return "Os resultados eleitorais ainda não foram importados.";
+    case "propositions": return "Nenhuma proposição foi sincronizada para este mandato.";
+    case "votes": return "Os registros de votações ainda estão em processamento.";
+    case "attendance": return "Os dados de presença ainda não foram sincronizados.";
+    case "parliamentary-expenses": return "Nenhuma despesa parlamentar encontrada para este político.";
+    case "news": return "Nenhuma notícia revisada foi publicada para este político.";
+    case "promises": return "As promessas de campanha ainda não foram avaliadas.";
+    case "judicial-cases": return "Nenhum processo confirmado e publicado está disponível.";
+    default: return "Dados ainda não disponíveis.";
+  }
 }
 
 function getTableHeaders(endpoint: string): string[] {
