@@ -149,12 +149,25 @@ async def get_candidacies(
 
     items = []
     for cand, elec in rows:
+        # Resolve party and position without lazy loading
+        party_acronym = None
+        if cand.party_id:
+            from app.models.politician import PoliticalParty, PoliticalPosition
+            party_r = await db.execute(select(PoliticalParty.acronym).where(PoliticalParty.id == cand.party_id))
+            party_acronym = party_r.scalar_one_or_none()
+
+        position_name = None
+        if cand.position_id:
+            from app.models.politician import PoliticalPosition
+            pos_r = await db.execute(select(PoliticalPosition.name).where(PoliticalPosition.id == cand.position_id))
+            position_name = pos_r.scalar_one_or_none()
+
         items.append(CandidacyItem(
             id=cand.id,
             election_year=elec.year,
             election_name=elec.name,
-            position=cand.position.name if cand.position else None,
-            party_acronym=cand.party.acronym if cand.party else None,
+            position=position_name,
+            party_acronym=party_acronym,
             ballot_name=cand.ballot_name,
             ballot_number=cand.ballot_number,
             state_code=cand.state_code,
