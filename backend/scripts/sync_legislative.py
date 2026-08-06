@@ -317,7 +317,7 @@ async def main():
                     print(f"  ⚠ Sem ID da Câmara: {politician.full_name}")
                     continue
 
-    print(f"\n  [{politician.full_name}] (ID: {camara_id})")
+                print(f"\n  [{politician.full_name}] (ID: {camara_id})")
                 total_props += await sync_propositions_camara(db, house_cd, politician, camara_id, client)
                 total_votes += await sync_votes_camara(db, house_cd, politician, camara_id, client)
                 total_committees += await sync_committees_camara(db, house_cd, politician, camara_id, client)
