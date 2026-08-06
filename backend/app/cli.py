@@ -312,6 +312,214 @@ async def seed_political_reference_data() -> None:
     await engine.dispose()
 
 
+async def import_deputies() -> None:
+    """Importa deputados da Câmara como políticos publicados."""
+    import re
+    import unicodedata
+    import httpx
+
+    print("\n=== Importar Deputados da Câmara dos Deputados ===\n")
+
+    engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession)
+
+    # Fetch from Câmara API
+    print("  Buscando deputados na API da Câmara...")
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(
+            "https://dadosabertos.camara.leg.br/api/v2/deputados",
+            params={"itens": 100, "ordem": "ASC", "ordenarPor": "nome"},
+            headers={"Accept": "application/json"},
+        )
+        if resp.status_code != 200:
+            print(f"  Erro: API retornou {resp.status_code}")
+            return
+        data = resp.json()
+        deputies = data.get("dados", [])
+
+        # Get remaining pages
+        links = data.get("links", [])
+        last_link = next((l for l in links if l.get("rel") == "last"), None)
+        if last_link:
+            # Fetch all pages
+            page = 2
+            while True:
+                resp2 = await client.get(
+                    "https://dadosabertos.camara.leg.br/api/v2/deputados",
+                    params={"itens": 100, "pagina": page, "ordem": "ASC", "ordenarPor": "nome"},
+                    headers={"Accept": "application/json"},
+                )
+                if resp2.status_code != 200:
+                    break
+                page_data = resp2.json().get("dados", [])
+                if not page_data:
+                    break
+                deputies.extend(page_data)
+                page += 1
+
+    print(f"  Encontrados: {len(deputies)} deputados")
+
+    # Import to database
+    async with session_factory() as db:
+        from app.models.politician import Politician, PoliticalParty, PoliticalPosition, PoliticianAlias
+
+        # Get position "Deputado Federal"
+        pos_result = await db.execute(
+            select(PoliticalPosition).where(PoliticalPosition.name == "Deputado Federal")
+        )
+        position = pos_result.scalar_one_or_none()
+
+        created = 0
+        skipped = 0
+
+        for dep in deputies:
+            name = dep.get("nome", "").strip()
+            if not name:
+                continue
+
+            # Generate slug
+            slug = unicodedata.normalize("NFKD", name.lower())
+            slug = "".join(c for c in slug if not unicodedata.combining(c))
+            slug = re.sub(r"[^a-z0-9\s-]", "", slug)
+            slug = re.sub(r"[\s]+", "-", slug).strip("-")
+
+            # Check if already exists
+            existing = await db.execute(
+                select(Politician).where(Politician.slug == slug)
+            )
+            if existing.scalar_one_or_none():
+                skipped += 1
+                continue
+
+            # Resolve party
+            party_acronym = dep.get("siglaPartido", "")
+            party_id = None
+            if party_acronym:
+                party_result = await db.execute(
+                    select(PoliticalParty.id).where(PoliticalParty.acronym == party_acronym)
+                )
+                party_id = party_result.scalar_one_or_none()
+
+            politician = Politician(
+                full_name=name,
+                ballot_name=name,
+                slug=slug,
+                photo_url=dep.get("urlFoto"),
+                state_code=dep.get("siglaUf"),
+                current_status="in_office",
+                current_party_id=party_id,
+                current_position_id=position.id if position else None,
+                is_public=True,
+                is_verified=False,
+                created_by="CLI import-deputies",
+                source_url=dep.get("uri"),
+            )
+            db.add(politician)
+            created += 1
+
+            # Flush every 50 to avoid memory issues
+            if created % 50 == 0:
+                await db.flush()
+                print(f"  ... {created} criados")
+
+        await db.commit()
+        print(f"\n✓ Importação concluída!")
+        print(f"  Criados: {created}")
+        print(f"  Já existentes: {skipped}")
+        print(f"  Total na API: {len(deputies)}")
+
+    await engine.dispose()
+
+
+async def import_senators() -> None:
+    """Importa senadores como políticos publicados."""
+    import re
+    import unicodedata
+    import httpx
+
+    print("\n=== Importar Senadores ===\n")
+
+    engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession)
+
+    print("  Buscando senadores na API do Senado...")
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(
+            "https://legis.senado.leg.br/dadosabertos/senador/lista/atual",
+            headers={"Accept": "application/json"},
+        )
+        if resp.status_code != 200:
+            print(f"  Erro: API retornou {resp.status_code}")
+            return
+        data = resp.json()
+        parlamentares = data.get("ListaParlamentarEmExercicio", {})
+        senators = parlamentares.get("Parlamentares", {}).get("Parlamentar", [])
+
+    print(f"  Encontrados: {len(senators)} senadores")
+
+    async with session_factory() as db:
+        from app.models.politician import Politician, PoliticalParty, PoliticalPosition
+
+        pos_result = await db.execute(
+            select(PoliticalPosition).where(PoliticalPosition.name == "Senador")
+        )
+        position = pos_result.scalar_one_or_none()
+
+        created = 0
+        skipped = 0
+
+        for sen in senators:
+            ident = sen.get("IdentificacaoParlamentar", {})
+            name = ident.get("NomeParlamentar", "").strip()
+            if not name:
+                continue
+
+            slug = unicodedata.normalize("NFKD", name.lower())
+            slug = "".join(c for c in slug if not unicodedata.combining(c))
+            slug = re.sub(r"[^a-z0-9\s-]", "", slug)
+            slug = re.sub(r"[\s]+", "-", slug).strip("-")
+
+            existing = await db.execute(
+                select(Politician).where(Politician.slug == slug)
+            )
+            if existing.scalar_one_or_none():
+                skipped += 1
+                continue
+
+            party_acronym = ident.get("SiglaPartidoParlamentar", "")
+            party_id = None
+            if party_acronym:
+                party_result = await db.execute(
+                    select(PoliticalParty.id).where(PoliticalParty.acronym == party_acronym)
+                )
+                party_id = party_result.scalar_one_or_none()
+
+            politician = Politician(
+                full_name=name,
+                ballot_name=name,
+                slug=slug,
+                photo_url=ident.get("UrlFotoParlamentar"),
+                state_code=ident.get("UfParlamentar"),
+                current_status="in_office",
+                current_party_id=party_id,
+                current_position_id=position.id if position else None,
+                is_public=True,
+                is_verified=False,
+                created_by="CLI import-senators",
+                source_url=ident.get("UrlPaginaParlamentar"),
+            )
+            db.add(politician)
+            created += 1
+
+        await db.commit()
+        print(f"\n✓ Importação concluída!")
+        print(f"  Criados: {created}")
+        print(f"  Já existentes: {skipped}")
+        print(f"  Total na API: {len(senators)}")
+
+    await engine.dispose()
+
+
 def main() -> None:
     """Ponto de entrada do CLI."""
     if len(sys.argv) < 2:
@@ -320,6 +528,8 @@ def main() -> None:
         print("  create-superadmin              - Cria superadministrador")
         print("  seed-roles                     - Cria roles e permissões padrão")
         print("  seed-political-reference-data  - Cria partidos e cargos")
+        print("  import-deputies                - Importa deputados da Câmara como políticos")
+        print("  import-senators                - Importa senadores como políticos")
         sys.exit(1)
 
     command = sys.argv[1]
@@ -329,6 +539,10 @@ def main() -> None:
         asyncio.run(seed_roles())
     elif command == "seed-political-reference-data":
         asyncio.run(seed_political_reference_data())
+    elif command == "import-deputies":
+        asyncio.run(import_deputies())
+    elif command == "import-senators":
+        asyncio.run(import_senators())
     else:
         print(f"Comando desconhecido: {command}")
         sys.exit(1)
