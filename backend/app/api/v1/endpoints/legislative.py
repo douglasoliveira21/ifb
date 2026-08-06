@@ -39,7 +39,7 @@ async def _get_legislator_ids(slug: str, db: AsyncSession) -> list[uuid.UUID]:
     )
     politician_id = pol_result.scalar_one_or_none()
     if not politician_id:
-        raise NotFoundError(detail="Político não encontrado.")
+        return []
 
     profiles = await db.execute(
         select(PoliticianLegislativeProfile.legislator_id).where(
@@ -106,15 +106,29 @@ async def get_propositions(
     db: AsyncSession = Depends(get_db),
 ):
     """Lista proposições do parlamentar."""
+    # Get politician name for author search
+    pol_result = await db.execute(
+        select(Politician).where(
+            Politician.slug == slug, Politician.is_public == True, Politician.deleted_at == None
+        )
+    )
+    politician = pol_result.scalar_one_or_none()
+    if not politician:
+        raise NotFoundError(detail="Político não encontrado.")
+
     legislator_ids = await _get_legislator_ids(slug, db)
-    if not legislator_ids:
-        return {"data": [], "pagination": {"total": 0, "page": page, "limit": limit},
-                "metadata": LegislativeMetadata(availability="not_available").model_dump()}
+
+    # Search by legislator_id OR by author name
+    from sqlalchemy import or_
+    author_conditions = []
+    if legislator_ids:
+        author_conditions.append(PropositionAuthor.legislator_id.in_(legislator_ids))
+    author_conditions.append(PropositionAuthor.author_name == politician.full_name)
 
     query = (
         select(LegislativeProposition)
         .join(PropositionAuthor)
-        .where(PropositionAuthor.legislator_id.in_(legislator_ids))
+        .where(or_(*author_conditions))
     )
     if year:
         query = query.where(LegislativeProposition.year == year)
