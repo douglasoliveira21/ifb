@@ -4,34 +4,43 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-/* Foto oficial do Congresso Nacional — asset local */
 const HERO_IMAGE = "/images/congresso-nacional.png";
 
-/* Fotos placeholder dos políticos do ranking (API da Câmara) */
-const RANKING_PHOTOS: Record<string, string> = {
-  "Adriana Ventura": "https://www.camara.leg.br/internet/deputado/bandep/204554.jpg",
-  "Kim Kataguiri": "https://www.camara.leg.br/internet/deputado/bandep/204374.jpg",
-  "Alan Rick": "https://www.camara.leg.br/internet/deputado/bandep/160518.jpg",
-  "Rodrigo Maia": "https://www.camara.leg.br/internet/deputado/bandep/74693.jpg",
-  "Zé Trovão": "https://www.camara.leg.br/internet/deputado/bandep/220596.jpg",
-};
+interface PlatformStats {
+  politicians: number;
+  propositions: number;
+  votes: number;
+  committees: number;
+  expenses_total: number;
+}
 
-/* Thumbnails de notícias — fotos editoriais do Congresso (Wikimedia Commons, CC-BY) */
-const NEWS_THUMBS = [
-  "https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Fachada_do_Congresso_Nacional_%2848079561026%29.jpg/320px-Fachada_do_Congresso_Nacional_%2848079561026%29.jpg",
-  "https://upload.wikimedia.org/wikipedia/commons/thumb/4/40/Congresso_Nacional_%2824858405017%29.jpg/320px-Congresso_Nacional_%2824858405017%29.jpg",
-  "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Palacio_do_Planalto.jpg/320px-Palacio_do_Planalto.jpg",
-];
+interface NewsItem {
+  id: string;
+  title: string;
+  source_url: string;
+  category: string;
+  published_at: string | null;
+  politician_name: string;
+  politician_slug: string;
+  summary: string | null;
+}
 
 export default function HomePage() {
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<PlatformStats | null>(null);
+  const [news, setNews] = useState<NewsItem[]>([]);
+  const [newsLoading, setNewsLoading] = useState(true);
 
   useEffect(() => {
     fetch(`${API_URL}/api/v1/stats`)
       .then((r) => r.json())
       .then(setStats)
       .catch(() => {});
+
+    fetch(`${API_URL}/api/v1/news/latest?limit=3`)
+      .then((r) => r.json())
+      .then((d) => setNews(d.items || []))
+      .catch(() => {})
+      .finally(() => setNewsLoading(false));
   }, []);
 
   return (
@@ -54,6 +63,7 @@ export default function HomePage() {
               { label: "Início", href: "/" },
               { label: "Ranking", href: "/ranking" },
               { label: "Notícias", href: "/noticias" },
+              { label: "Políticos", href: "/politicos" },
               { label: "Transparência", href: "/transparencia" },
               { label: "Sobre", href: "/sobre" },
               { label: "Contato", href: "/contato" },
@@ -65,9 +75,9 @@ export default function HomePage() {
           </nav>
 
           <div className="flex items-center gap-3">
-            <button className="w-[36px] h-[36px] flex items-center justify-center text-[#6B7280] hover:text-[#111] transition" aria-label="Buscar">
+            <Link href="/politicos" className="w-[36px] h-[36px] flex items-center justify-center text-[#6B7280] hover:text-[#111] transition" aria-label="Buscar">
               <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-            </button>
+            </Link>
             <Link href="/login" className="text-[14px] font-medium text-[#374151] hover:text-[#111] transition hidden sm:block">Entrar</Link>
             <Link href="/doar" className="h-[38px] px-5 bg-[#F4B400] hover:bg-[#D9A000] text-[#111] text-[13px] font-semibold rounded-[10px] flex items-center gap-1.5 transition-colors">
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" /></svg>
@@ -81,7 +91,6 @@ export default function HomePage() {
       <section className="relative overflow-hidden bg-gradient-to-r from-[#FFFDF5] via-[#FFF9E6] to-[#FFF3CC]">
         <div className="max-w-[1440px] mx-auto px-6 lg:px-12 relative">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 items-center min-h-[420px]">
-            {/* Left — Text */}
             <div className="py-14 lg:py-20 relative z-10">
               <h1 className="text-[38px] sm:text-[46px] lg:text-[52px] font-bold text-[#111] leading-[1.1] tracking-tight">
                 Fiscalizar é um<br />direito <span className="text-[#F4B400]">seu.</span>
@@ -89,15 +98,9 @@ export default function HomePage() {
               <p className="mt-4 text-[15px] text-[#6B7280] leading-relaxed max-w-[400px]">
                 Informação política de qualidade,<br />transparente e independente.
               </p>
-
               <form action="/politicos" className="mt-8">
                 <div className="flex items-center bg-white border border-[#E5E7EB] rounded-[12px] overflow-hidden shadow-[0_2px_8px_rgba(0,0,0,0.06)] max-w-[480px]">
-                  <input
-                    type="text"
-                    name="q"
-                    placeholder="Pesquise por nome, partido, cargo ou Estado..."
-                    className="flex-1 h-[50px] px-5 text-[14px] text-[#111] placeholder:text-[#9CA3AF] outline-none bg-transparent"
-                  />
+                  <input type="text" name="q" placeholder="Pesquise por nome, partido, cargo ou Estado..." className="flex-1 h-[50px] px-5 text-[14px] text-[#111] placeholder:text-[#9CA3AF] outline-none bg-transparent" />
                   <button type="submit" className="w-[50px] h-[50px] bg-[#F4B400] hover:bg-[#D9A000] flex items-center justify-center transition-colors flex-shrink-0">
                     <svg className="w-[18px] h-[18px] text-[#111]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                   </button>
@@ -105,15 +108,9 @@ export default function HomePage() {
                 <p className="mt-3 text-[12px] text-[#9CA3AF]">Ex: Bolsonaro, Lula, PT, PL, São Paulo...</p>
               </form>
             </div>
-
-            {/* Right — Image */}
             <div className="hidden lg:block relative h-[420px]">
               <div className="absolute inset-0 overflow-hidden rounded-bl-[60px]">
-                <img
-                  src={HERO_IMAGE}
-                  alt="Congresso Nacional, Brasília"
-                  className="w-full h-full object-cover object-center"
-                />
+                <img src={HERO_IMAGE} alt="Congresso Nacional, Brasília" className="w-full h-full object-cover object-center" />
                 <div className="absolute inset-0 bg-gradient-to-l from-transparent to-[#FFF9E6]/80" />
               </div>
             </div>
@@ -121,21 +118,19 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ===== INDICADORES ===== */}
+      {/* ===== INDICADORES (API real) ===== */}
       <section className="bg-white border-y border-[#E5E7EB] -mt-[1px]">
         <div className="max-w-[1440px] mx-auto px-6 lg:px-12 py-5">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
             {[
-              { value: stats?.politicians?.toLocaleString("pt-BR") || "—", label: "Políticos\ncadastrados", icon: "👤" },
-              { value: stats?.propositions?.toLocaleString("pt-BR") || "—", label: "Proposições e\nmatérias", icon: "📋" },
-              { value: stats?.votes?.toLocaleString("pt-BR") || "—", label: "Votações\nregistradas", icon: "✓" },
-              { value: stats?.committees?.toLocaleString("pt-BR") || "—", label: "Comissões\nparlamentares", icon: "🏛" },
+              { value: stats ? stats.politicians.toLocaleString("pt-BR") : "—", label: "Políticos\ncadastrados", icon: "👤" },
+              { value: stats ? stats.propositions.toLocaleString("pt-BR") : "—", label: "Proposições e\nmatérias", icon: "📋" },
+              { value: stats ? stats.votes.toLocaleString("pt-BR") : "—", label: "Votações\nregistradas", icon: "✓" },
+              { value: stats ? stats.committees.toLocaleString("pt-BR") : "—", label: "Comissões\nparlamentares", icon: "🏛" },
               { value: stats?.expenses_total ? `R$ ${(stats.expenses_total / 1_000_000).toFixed(0)} mi+` : "—", label: "Gastos\nparlamentares", icon: "💰" },
             ].map((s, i) => (
               <div key={i} className="flex items-center gap-3 bg-[#FAFAFA] border border-[#E9ECEF] rounded-[12px] px-4 py-3">
-                <div className="w-[36px] h-[36px] bg-[#FFF8E1] rounded-full flex items-center justify-center flex-shrink-0 text-[14px]">
-                  {s.icon}
-                </div>
+                <div className="w-[36px] h-[36px] bg-[#FFF8E1] rounded-full flex items-center justify-center flex-shrink-0 text-[14px]">{s.icon}</div>
                 <div>
                   <p className="text-[20px] lg:text-[22px] font-bold text-[#111] leading-tight">{s.value}</p>
                   <p className="text-[11px] text-[#6B7280] whitespace-pre-line leading-tight">{s.label}</p>
@@ -150,90 +145,77 @@ export default function HomePage() {
       <section className="max-w-[1440px] mx-auto px-6 lg:px-12 py-10">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-          {/* === Ranking IFB === */}
+          {/* === Ranking — Em preparação === */}
           <div className="bg-white border border-[#E5E7EB] rounded-[16px] p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-[15px] font-bold text-[#111]">Ranking IFB</h2>
-              <Link href="/ranking" className="text-[12px] text-[#F4B400] font-medium hover:underline">Ver ranking completo →</Link>
             </div>
-
-            {/* Tabs */}
-            <div className="flex gap-0 mb-5">
-              {["Geral", "Câmara", "Senado"].map((tab, i) => (
-                <button
-                  key={tab}
-                  className={`px-4 py-1.5 text-[12px] font-medium rounded-full transition ${
-                    i === 0
-                      ? "bg-[#F4B400] text-[#111]"
-                      : "bg-[#F6F7F9] text-[#6B7280] hover:bg-[#E9ECEF]"
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <div className="w-[48px] h-[48px] bg-[#FFF8E1] rounded-full flex items-center justify-center mb-4">
+                <svg className="w-6 h-6 text-[#F4B400]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+              </div>
+              <p className="text-[14px] font-semibold text-[#111] mb-1">Ranking em preparação</p>
+              <p className="text-[12px] text-[#6B7280] max-w-[220px] leading-relaxed">
+                Estamos finalizando a metodologia pública de avaliação dos parlamentares.
+              </p>
+              <Link href="/metodologia" className="mt-4 text-[12px] text-[#F4B400] font-medium hover:underline">
+                Conheça a metodologia →
+              </Link>
             </div>
-
-            {/* List */}
-            <div className="space-y-0.5">
-              {[
-                { name: "Adriana Ventura", party: "NOVO / SP", score: 78.6 },
-                { name: "Kim Kataguiri", party: "UNIÃO / SP", score: 72.4 },
-                { name: "Alan Rick", party: "UNIÃO / AC", score: 71.3 },
-                { name: "Rodrigo Maia", party: "PODE / PR", score: 68.9 },
-                { name: "Zé Trovão", party: "PL / SC", score: 67.2 },
-              ].map((p, i) => (
-                <div key={i} className="flex items-center gap-3 py-2.5 px-2 rounded-[10px] hover:bg-[#F6F7F9] transition">
-                  <span className="text-[12px] font-bold text-[#9CA3AF] w-[14px] text-right">{i + 1}</span>
-                  <div className="w-[34px] h-[34px] rounded-full overflow-hidden flex-shrink-0 bg-[#E9ECEF]">
-                    <img
-                      src={RANKING_PHOTOS[p.name] || ""}
-                      alt={p.name}
-                      className="w-full h-full object-cover"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-semibold text-[#111] truncate">{p.name}</p>
-                    <p className="text-[11px] text-[#9CA3AF]">{p.party}</p>
-                  </div>
-                  <span className="text-[15px] font-bold text-[#F4B400]">{p.score}</span>
-                </div>
-              ))}
-            </div>
-
-            <Link href="/metodologia" className="mt-5 flex items-center justify-center gap-1 text-[12px] text-[#6B7280] hover:text-[#111] transition">
-              Metodologia do Ranking
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            </Link>
           </div>
 
-          {/* === Notícias === */}
+          {/* === Notícias (API real) === */}
           <div className="bg-white border border-[#E5E7EB] rounded-[16px] p-6">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-[15px] font-bold text-[#111]">Notícias em destaque</h2>
-              <Link href="/noticias" className="text-[12px] text-[#F4B400] font-medium hover:underline">Ver todas →</Link>
+              <h2 className="text-[15px] font-bold text-[#111]">Notícias recentes</h2>
             </div>
-            <div className="space-y-4">
-              {[
-                { tag: "CÂMARA", tagColor: "#2563EB", date: "há 2 horas", title: "Câmara aprova projeto que endurece punições para crimes contra o patrimônio público", sub: "Projeto segue agora para análise do Senado Federal." },
-                { tag: "SENADO", tagColor: "#16A34A", date: "há 4 horas", title: "Senado debate novo marco fiscal em audiência pública nesta terça-feira", sub: "Economistas e especialistas foram convidados para discutir o impacto da proposta." },
-                { tag: "POLÍTICA", tagColor: "#DC2626", date: "há 6 horas", title: "Governo envia ao Congresso projeto de lei sobre inteligência artificial", sub: "Texto prevê diretrizes para o uso ético e seguro da IA no Brasil." },
-              ].map((n, i) => (
-                <div key={i} className="flex gap-3 pb-4 border-b border-[#F3F4F6] last:border-0 last:pb-0">
-                  <div className="w-[80px] h-[80px] rounded-[10px] overflow-hidden flex-shrink-0 bg-[#E9ECEF]">
-                    <img src={NEWS_THUMBS[i]} alt="" className="w-full h-full object-cover" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: n.tagColor + "15", color: n.tagColor }}>{n.tag}</span>
-                      <span className="text-[10px] text-[#9CA3AF]">{n.date}</span>
+
+            {newsLoading && (
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="animate-pulse flex gap-3">
+                    <div className="w-[60px] h-[60px] bg-[#E9ECEF] rounded-[8px]" />
+                    <div className="flex-1 space-y-2 py-1">
+                      <div className="h-3 bg-[#E9ECEF] rounded w-full" />
+                      <div className="h-3 bg-[#E9ECEF] rounded w-2/3" />
                     </div>
-                    <p className="text-[13px] font-semibold text-[#111] leading-snug line-clamp-2">{n.title}</p>
-                    <p className="text-[11px] text-[#9CA3AF] mt-1 leading-relaxed line-clamp-2">{n.sub}</p>
                   </div>
+                ))}
+              </div>
+            )}
+
+            {!newsLoading && news.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-10 text-center">
+                <div className="w-[48px] h-[48px] bg-[#FFF8E1] rounded-full flex items-center justify-center mb-4">
+                  <svg className="w-6 h-6 text-[#F4B400]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" /></svg>
                 </div>
-              ))}
-            </div>
+                <p className="text-[14px] font-semibold text-[#111] mb-1">Notícias em processamento</p>
+                <p className="text-[12px] text-[#6B7280] max-w-[220px] leading-relaxed">
+                  As notícias serão publicadas após coleta, classificação e revisão humana.
+                </p>
+              </div>
+            )}
+
+            {!newsLoading && news.length > 0 && (
+              <div className="space-y-4">
+                {news.map((n) => (
+                  <div key={n.id} className="pb-4 border-b border-[#F3F4F6] last:border-0 last:pb-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#F4B400]/15 text-[#92700C]">{n.category?.toUpperCase() || "GERAL"}</span>
+                      {n.published_at && (
+                        <span className="text-[10px] text-[#9CA3AF]">{new Date(n.published_at).toLocaleDateString("pt-BR")}</span>
+                      )}
+                    </div>
+                    <a href={n.source_url} target="_blank" rel="noopener noreferrer" className="text-[13px] font-semibold text-[#111] leading-snug hover:text-[#F4B400] transition line-clamp-2">
+                      {n.title}
+                    </a>
+                    <p className="text-[11px] text-[#9CA3AF] mt-1">
+                      <Link href={`/politicos/${n.politician_slug}`} className="hover:text-[#111] transition">{n.politician_name}</Link>
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* === Transparência === */}
@@ -250,9 +232,7 @@ export default function HomePage() {
               ].map((item, i) => (
                 <Link key={i} href="/transparencia" className="flex items-center justify-between py-3 px-3 rounded-[10px] hover:bg-[#F6F7F9] transition group">
                   <div className="flex items-center gap-3">
-                    <div className="w-[28px] h-[28px] bg-[#FFF8E1] rounded-[8px] flex items-center justify-center text-[13px] flex-shrink-0">
-                      {item.icon}
-                    </div>
+                    <div className="w-[28px] h-[28px] bg-[#FFF8E1] rounded-[8px] flex items-center justify-center text-[13px] flex-shrink-0">{item.icon}</div>
                     <span className="text-[13px] text-[#374151] font-medium">{item.label}</span>
                   </div>
                   <svg className="w-4 h-4 text-[#9CA3AF] group-hover:text-[#F4B400] transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
@@ -299,9 +279,9 @@ export default function HomePage() {
               <p className="text-[11px] text-[#9CA3AF] leading-relaxed max-w-[200px]">Promovendo transparência, fiscalização e participação cidadã na política brasileira.</p>
             </div>
             {[
-              { title: "Navegação", links: [{ l: "Início", h: "/" }, { l: "Ranking", h: "/ranking" }, { l: "Notícias", h: "/noticias" }, { l: "Transparência", h: "/transparencia" }, { l: "Sobre", h: "/sobre" }, { l: "Contato", h: "/contato" }] },
-              { title: "Políticos", links: [{ l: "Deputados", h: "/politicos?position=deputado" }, { l: "Senadores", h: "/politicos?position=senador" }, { l: "Partidos", h: "/politicos" }, { l: "Estados", h: "/politicos" }] },
-              { title: "Institucional", links: [{ l: "Quem somos", h: "/sobre" }, { l: "Metodologia", h: "/metodologia" }, { l: "LGPD e Privacidade", h: "/privacidade" }, { l: "Termos de Uso", h: "/termos" }, { l: "Doações", h: "/doar" }] },
+              { title: "Navegação", links: [{ l: "Início", h: "/" }, { l: "Ranking", h: "/ranking" }, { l: "Notícias", h: "/noticias" }, { l: "Políticos", h: "/politicos" }, { l: "Transparência", h: "/transparencia" }, { l: "Sobre", h: "/sobre" }, { l: "Contato", h: "/contato" }] },
+              { title: "Políticos", links: [{ l: "Deputados", h: "/politicos?position=deputado" }, { l: "Senadores", h: "/politicos?position=senador" }, { l: "Todos", h: "/politicos" }] },
+              { title: "Institucional", links: [{ l: "Quem somos", h: "/sobre" }, { l: "Metodologia", h: "/metodologia" }, { l: "Privacidade", h: "/privacidade" }, { l: "Termos de Uso", h: "/termos" }, { l: "Doações", h: "/doar" }] },
               { title: "Transparência", links: [{ l: "Receitas e Despesas", h: "/transparencia" }, { l: "Doações", h: "/transparencia" }, { l: "Contratos", h: "/transparencia" }, { l: "Relatórios", h: "/transparencia" }] },
             ].map((col, i) => (
               <div key={i}>

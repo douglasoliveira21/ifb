@@ -7,6 +7,7 @@ from app.api.v1.endpoints import (
     admin_politicians,
     admin_rbac,
     auth,
+    contact,
     donations,
     electoral,
     health,
@@ -68,3 +69,6 @@ api_router.include_router(donations.router)
 
 # Transparência institucional
 api_router.include_router(transparency.router)
+
+# Contato
+api_router.include_router(contact.router)
