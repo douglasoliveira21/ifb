@@ -520,6 +520,151 @@ async def import_senators() -> None:
     await engine.dispose()
 
 
+async def sync_expenses(year: int) -> None:
+    """Sincroniza despesas parlamentares da Câmara."""
+    import hashlib
+    import httpx
+
+    print(f"\n=== Sincronizar Despesas da Câmara ({year}) ===\n")
+
+    engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession)
+
+    async with session_factory() as db:
+        from app.models.politician import Politician, PoliticalPosition
+        from app.models.legislative import ParliamentaryExpense, LegislativeHouse
+
+        # Get or create house
+        house_result = await db.execute(
+            select(LegislativeHouse).where(LegislativeHouse.acronym == "CD")
+        )
+        house = house_result.scalar_one_or_none()
+        if not house:
+            house = LegislativeHouse(
+                name="Câmara dos Deputados", acronym="CD",
+                api_base_url="https://dadosabertos.camara.leg.br/api/v2",
+            )
+            db.add(house)
+            await db.flush()
+
+        # Get deputies (politicians with position Deputado Federal)
+        pos_result = await db.execute(
+            select(PoliticalPosition.id).where(PoliticalPosition.name == "Deputado Federal")
+        )
+        pos_id = pos_result.scalar_one_or_none()
+
+        deputies_result = await db.execute(
+            select(Politician).where(
+                Politician.current_position_id == pos_id,
+                Politician.is_public == True,
+            ).limit(20)  # Start with 20 deputies for testing
+        )
+        deputies = deputies_result.scalars().all()
+        print(f"  Processando despesas de {len(deputies)} deputados (amostra)...")
+
+        total_expenses = 0
+        errors = 0
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            for i, dep in enumerate(deputies):
+                # Find Câmara ID from source_url
+                camara_id = None
+                if dep.source_url and "deputados/" in str(dep.source_url):
+                    parts = str(dep.source_url).split("/")
+                    for j, part in enumerate(parts):
+                        if part == "deputados" and j + 1 < len(parts):
+                            camara_id = parts[j + 1]
+                            break
+
+                if not camara_id:
+                    # Try fetching by name
+                    try:
+                        search_resp = await client.get(
+                            "https://dadosabertos.camara.leg.br/api/v2/deputados",
+                            params={"nome": dep.full_name, "itens": 1},
+                            headers={"Accept": "application/json"},
+                        )
+                        if search_resp.status_code == 200:
+                            results = search_resp.json().get("dados", [])
+                            if results:
+                                camara_id = str(results[0]["id"])
+                    except Exception:
+                        pass
+
+                if not camara_id:
+                    continue
+
+                # Fetch expenses
+                try:
+                    resp = await client.get(
+                        f"https://dadosabertos.camara.leg.br/api/v2/deputados/{camara_id}/despesas",
+                        params={"ano": year, "itens": 100, "ordem": "ASC", "ordenarPor": "ano"},
+                        headers={"Accept": "application/json"},
+                    )
+                    if resp.status_code != 200:
+                        continue
+
+                    expenses_data = resp.json().get("dados", [])
+
+                    for exp in expenses_data:
+                        doc_num = exp.get("numDocumento", "")
+                        month = exp.get("mes", 0)
+                        ext_id = f"{camara_id}-{year}-{month}-{doc_num}"
+
+                        # Check duplicate
+                        existing = await db.execute(
+                            select(ParliamentaryExpense.id).where(
+                                ParliamentaryExpense.external_id == ext_id
+                            )
+                        )
+                        if existing.scalar_one_or_none():
+                            continue
+
+                        supplier_doc = exp.get("cnpjCpfFornecedor", "")
+                        supplier_hash = None
+                        if supplier_doc:
+                            cleaned = supplier_doc.replace(".", "").replace("-", "").replace("/", "")
+                            if cleaned:
+                                supplier_hash = hashlib.sha256(cleaned.encode()).hexdigest()
+
+                        net = float(exp.get("valorLiquido", 0) or 0)
+                        gross = float(exp.get("valorDocumento", 0) or 0)
+
+                        expense = ParliamentaryExpense(
+                            house_id=house.id,
+                            legislator_id=None,  # Linked via politician
+                            external_id=ext_id,
+                            year=int(year),
+                            month=int(month),
+                            category=exp.get("tipoDespesa", "Não categorizado"),
+                            supplier_name=exp.get("nomeFornecedor"),
+                            supplier_document_hash=supplier_hash,
+                            document_number=str(doc_num) if doc_num else None,
+                            gross_amount=gross,
+                            net_amount=net,
+                            reimbursement_amount=net,
+                            document_url=exp.get("urlDocumento"),
+                        )
+                        db.add(expense)
+                        total_expenses += 1
+
+                except Exception as e:
+                    errors += 1
+                    if errors <= 3:
+                        print(f"  Erro deputado {dep.full_name}: {e}")
+
+                if (i + 1) % 5 == 0:
+                    await db.flush()
+                    print(f"  ... {i + 1}/{len(deputies)} deputados, {total_expenses} despesas")
+
+        await db.commit()
+        print(f"\n✓ Sincronização concluída!")
+        print(f"  Despesas importadas: {total_expenses}")
+        print(f"  Erros: {errors}")
+
+    await engine.dispose()
+
+
 def main() -> None:
     """Ponto de entrada do CLI."""
     if len(sys.argv) < 2:
@@ -530,6 +675,7 @@ def main() -> None:
         print("  seed-political-reference-data  - Cria partidos e cargos")
         print("  import-deputies                - Importa deputados da Câmara como políticos")
         print("  import-senators                - Importa senadores como políticos")
+        print("  sync-expenses [ano]            - Sincroniza despesas da Câmara (padrão: 2025)")
         sys.exit(1)
 
     command = sys.argv[1]
@@ -543,6 +689,9 @@ def main() -> None:
         asyncio.run(import_deputies())
     elif command == "import-senators":
         asyncio.run(import_senators())
+    elif command == "sync-expenses":
+        year = int(sys.argv[2]) if len(sys.argv) > 2 else 2025
+        asyncio.run(sync_expenses(year))
     else:
         print(f"Comando desconhecido: {command}")
         sys.exit(1)
