@@ -166,9 +166,19 @@ async def sync_votes_camara(db: AsyncSession, house, politician: Politician, cam
         )
         event = existing_event.scalar_one_or_none()
         if not event:
+            # Parse date string to datetime
+            date_raw = v.get("dataHoraRegistro") or v.get("data")
+            date_parsed = None
+            if date_raw:
+                from datetime import datetime as dt
+                try:
+                    date_parsed = dt.fromisoformat(date_raw.replace("Z", "+00:00"))
+                except (ValueError, AttributeError):
+                    pass
+
             event = LegislativeVoteEvent(
                 house_id=house.id, external_id=ext_id,
-                date=v.get("dataHoraRegistro"), description=v.get("descricao"),
+                date=date_parsed, description=v.get("descricao"),
                 result=str(v.get("aprovacao", "")), is_nominal=True,
                 source_url=f"{CAMARA_API}/votacoes/{ext_id}",
             )
