@@ -136,6 +136,58 @@ async def get_politician_news_summary(
     }
 
 
+# --- Individual news detail ---
+
+@router.get("/news/{classification_id}")
+async def get_news_detail(
+    classification_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Retorna detalhe público de uma notícia aprovada."""
+    result = await db.execute(
+        select(NewsClassification, NewsArticle)
+        .join(NewsArticle, NewsClassification.article_id == NewsArticle.id)
+        .where(
+            NewsClassification.id == classification_id,
+            NewsClassification.review_status.in_(["auto_approved", "approved"]),
+        )
+    )
+    row = result.first()
+    if not row:
+        raise NotFoundError(detail="Notícia não encontrada ou não aprovada.")
+
+    classification, article = row
+
+    # Get politician info
+    mention_result = await db.execute(
+        select(NewsMention, Politician.full_name, Politician.slug)
+        .join(Politician, NewsMention.politician_id == Politician.id)
+        .where(NewsMention.article_id == article.id)
+        .limit(1)
+    )
+    mention_row = mention_result.first()
+    politician_name = mention_row[1] if mention_row else None
+    politician_slug = mention_row[2] if mention_row else None
+
+    return {
+        "id": str(classification.id),
+        "title": article.title,
+        "source_url": article.canonical_url,
+        "source_domain": article.provider,
+        "image_url": article.image_url,
+        "published_at": article.published_at.isoformat() if article.published_at else None,
+        "category": classification.category,
+        "reputational_impact": classification.reputational_impact,
+        "impact_intensity": classification.impact_intensity,
+        "sentiment": classification.sentiment,
+        "summary": classification.summary,
+        "confidence": classification.confidence,
+        "fact_type": classification.fact_type,
+        "politician_name": politician_name,
+        "politician_slug": politician_slug,
+    }
+
+
 # --- Contestation ---
 
 class ContestRequest(BaseModel):

@@ -206,9 +206,9 @@ export default function HomePage() {
                         <span className="text-[10px] text-[#9CA3AF]">{new Date(n.published_at).toLocaleDateString("pt-BR")}</span>
                       )}
                     </div>
-                    <a href={n.source_url} target="_blank" rel="noopener noreferrer" className="text-[13px] font-semibold text-[#111] leading-snug hover:text-[#F4B400] transition line-clamp-2">
+                    <Link href={`/noticias/${n.id}`} className="text-[13px] font-semibold text-[#111] leading-snug hover:text-[#F4B400] transition line-clamp-2 block">
                       {n.title}
-                    </a>
+                    </Link>
                     <p className="text-[11px] text-[#9CA3AF] mt-1">
                       <Link href={`/politicos/${n.politician_slug}`} className="hover:text-[#111] transition">{n.politician_name}</Link>
                     </p>

@@ -1,155 +1,47 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-interface UserMe {
-  id: string;
-  email: string;
-  full_name: string;
-  is_verified: boolean;
-  mfa_enabled: boolean;
-  roles: string[];
-}
+import { AdminGuard, AdminLayout } from "@/components/admin";
 
 export default function AdminPage() {
-  const router = useRouter();
-  const [user, setUser] = useState<UserMe | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  return (
+    <AdminGuard>
+      <AdminLayout title="Painel Administrativo" description="Gerenciamento do Instituto Fiscaliza Brasil.">
+        <AdminDashboard />
+      </AdminLayout>
+    </AdminGuard>
+  );
+}
 
-  useEffect(() => {
-    fetch(`${API_URL}/api/v1/users/me`, { credentials: "include" })
-      .then((res) => {
-        if (res.status === 401) {
-          router.push("/login");
-          return null;
-        }
-        if (!res.ok) throw new Error("Erro ao carregar perfil");
-        return res.json();
-      })
-      .then((data) => {
-        if (data) setUser(data);
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [router]);
-
-  if (loading) {
-    return (
-      <main className="min-h-screen bg-ifb-gray-light flex items-center justify-center">
-        <p className="text-gray-500">Carregando...</p>
-      </main>
-    );
-  }
-
-  if (error) {
-    return (
-      <main className="min-h-screen bg-ifb-gray-light flex items-center justify-center">
-        <p className="text-red-600">{error}</p>
-      </main>
-    );
-  }
+function AdminDashboard() {
+  const modules = [
+    { label: "Notícias", description: "Revisão, classificação e publicação", href: "/admin/noticias", ready: true },
+    { label: "Políticos", description: "Cadastro, edição e publicação de perfis", href: "/admin/politicos", ready: true },
+    { label: "Usuários", description: "Roles, permissões e acesso", href: "/admin/usuarios", ready: true },
+    { label: "Integrações", description: "Câmara, Senado, TSE, sincronizações", href: "/admin/integracoes", ready: false },
+    { label: "Promessas", description: "Extração, revisão e avaliação", href: "/admin/promessas", ready: false },
+    { label: "Processos", description: "Revisão judicial e contestações", href: "/admin/processos", ready: false },
+    { label: "Doações", description: "Pagamentos e recibos", href: "/admin/doacoes", ready: false },
+    { label: "Transparência", description: "Receitas, despesas e contratos", href: "/admin/transparencia", ready: false },
+    { label: "Indicadores", description: "Metodologias e rankings", href: "/admin/indicadores", ready: false },
+  ];
 
   return (
-    <main className="min-h-screen bg-ifb-gray-light">
-      <div className="bg-white border-b border-ifb-gray-medium">
-        <div className="max-w-7xl mx-auto px-4 py-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-ifb-black">Painel Administrativo</h1>
-            <p className="text-sm text-gray-600 mt-1">
-              {user?.full_name} · {user?.email}
-            </p>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {modules.map((mod) => (
+        mod.ready ? (
+          <Link key={mod.label} href={mod.href} className="bg-white border border-[#E5E7EB] rounded-[12px] p-5 hover:border-[#F4B400] hover:shadow-sm transition group">
+            <h3 className="text-[14px] font-semibold text-[#111] group-hover:text-[#F4B400] transition">{mod.label}</h3>
+            <p className="text-[12px] text-[#6B7280] mt-1">{mod.description}</p>
+          </Link>
+        ) : (
+          <div key={mod.label} className="bg-[#F9FAFB] border border-[#E9ECEF] rounded-[12px] p-5 opacity-60">
+            <h3 className="text-[14px] font-semibold text-[#374151]">{mod.label}</h3>
+            <p className="text-[12px] text-[#9CA3AF] mt-1">{mod.description}</p>
+            <span className="inline-block mt-2 text-[10px] text-[#9CA3AF] bg-[#F3F4F6] px-2 py-0.5 rounded">Em preparação</span>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="px-3 py-1 bg-ifb-yellow/20 text-ifb-black text-xs font-medium rounded-full">
-              {user?.roles.join(", ")}
-            </span>
-            <Link href="/" className="text-sm text-gray-600 hover:text-ifb-black">
-              Voltar ao site
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <Link
-            href="/admin/politicos"
-            className="bg-white rounded-lg border border-ifb-gray-medium p-6 hover:shadow-md transition"
-          >
-            <h3 className="font-semibold text-ifb-black text-lg">Políticos</h3>
-            <p className="text-sm text-gray-600 mt-2">Gerenciar cadastro, publicar, editar perfis</p>
-          </Link>
-
-          <Link
-            href="/admin/integracoes"
-            className="bg-white rounded-lg border border-ifb-gray-medium p-6 hover:shadow-md transition"
-          >
-            <h3 className="font-semibold text-ifb-black text-lg">Integrações</h3>
-            <p className="text-sm text-gray-600 mt-2">TSE, Câmara, Senado, jobs, conciliação</p>
-          </Link>
-
-          <Link
-            href="/admin/noticias"
-            className="bg-white rounded-lg border border-ifb-gray-medium p-6 hover:shadow-md transition"
-          >
-            <h3 className="font-semibold text-ifb-black text-lg">Notícias</h3>
-            <p className="text-sm text-gray-600 mt-2">Revisão, classificação, fontes, custos de IA</p>
-          </Link>
-
-          <Link
-            href="/admin/promessas"
-            className="bg-white rounded-lg border border-ifb-gray-medium p-6 hover:shadow-md transition"
-          >
-            <h3 className="font-semibold text-ifb-black text-lg">Promessas</h3>
-            <p className="text-sm text-gray-600 mt-2">Extração, revisão, evidências, avaliações</p>
-          </Link>
-
-          <Link
-            href="/admin/processos"
-            className="bg-white rounded-lg border border-ifb-gray-medium p-6 hover:shadow-md transition"
-          >
-            <h3 className="font-semibold text-ifb-black text-lg">Processos</h3>
-            <p className="text-sm text-gray-600 mt-2">Revisão judicial, conciliação, contestações</p>
-          </Link>
-
-          <Link
-            href="/admin/doacoes"
-            className="bg-white rounded-lg border border-ifb-gray-medium p-6 hover:shadow-md transition"
-          >
-            <h3 className="font-semibold text-ifb-black text-lg">Doações</h3>
-            <p className="text-sm text-gray-600 mt-2">Pagamentos, webhooks, recibos, conciliação</p>
-          </Link>
-
-          <Link
-            href="/admin/transparencia"
-            className="bg-white rounded-lg border border-ifb-gray-medium p-6 hover:shadow-md transition"
-          >
-            <h3 className="font-semibold text-ifb-black text-lg">Transparência</h3>
-            <p className="text-sm text-gray-600 mt-2">Receitas, despesas, contratos, documentos</p>
-          </Link>
-
-          <Link
-            href="/admin/indicadores"
-            className="bg-white rounded-lg border border-ifb-gray-medium p-6 hover:shadow-md transition"
-          >
-            <h3 className="font-semibold text-ifb-black text-lg">Indicadores</h3>
-            <p className="text-sm text-gray-600 mt-2">Metodologias, cálculos, rankings</p>
-          </Link>
-
-          <Link
-            href="/admin/usuarios"
-            className="bg-white rounded-lg border border-ifb-gray-medium p-6 hover:shadow-md transition"
-          >
-            <h3 className="font-semibold text-ifb-black text-lg">Usuários</h3>
-            <p className="text-sm text-gray-600 mt-2">Gerenciar contas, roles, permissões</p>
-          </Link>
-        </div>
-      </div>
-    </main>
+        )
+      ))}
+    </div>
   );
 }
