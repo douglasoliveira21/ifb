@@ -143,11 +143,11 @@ async def sync_votes_camara(db: AsyncSession, house, politician: Politician, cam
 
     # Fetch recent nominal votes from global endpoint
     resp = await client.get(f"{CAMARA_API}/votacoes", params={
-        "dataInicio": "2026-01-01", "dataFim": "2026-08-06",
-        "ordem": "DESC", "ordenarPor": "dataHoraRegistro", "itens": 15
-    })
+        "dataInicio": "2026-07-01", "dataFim": "2026-08-06", "itens": 15,
+        "ordem": "DESC", "ordenarPor": "dataHoraRegistro",
+    }, headers={"Accept": "application/json"})
     if resp.status_code != 200:
-        print(f"      Erro votações global: {resp.status_code}")
+        print(f"      Erro votações global: {resp.status_code} — {resp.text[:100]}")
         return 0
 
     votes_data = resp.json().get("dados", [])
