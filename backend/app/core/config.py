@@ -52,8 +52,20 @@ class Settings(BaseSettings):
     jwt_refresh_expires_days: int = 7
     jwt_algorithm: str = "HS256"
 
-    # CORS
-    cors_origins: list[str] = ["http://localhost:3000"]
+    # CORS - aceita string separada por vírgula OU JSON array
+    cors_origins: str = "http://localhost:3000"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        """Parseia CORS origins de string ou JSON."""
+        import json
+        raw = self.cors_origins.strip()
+        if raw.startswith("["):
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError:
+                pass
+        return [o.strip() for o in raw.split(",") if o.strip()]
 
     # AI (DeepSeek / OpenAI-compatible)
     openai_api_key: str = ""
