@@ -557,7 +557,7 @@ async def sync_expenses(year: int) -> None:
             select(Politician).where(
                 Politician.current_position_id == pos_id,
                 Politician.is_public == True,
-            ).limit(20)  # Start with 20 deputies for testing
+            )
         )
         deputies = deputies_result.scalars().all()
         print(f"  Processando despesas de {len(deputies)} deputados (amostra)...")
