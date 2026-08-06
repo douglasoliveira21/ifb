@@ -121,7 +121,7 @@ export default function PoliticianProfilePage() {
         {activeTab === "propositions" && <ApiTab slug={slug} endpoint="propositions" title="Projetos de Lei" />}
         {activeTab === "votes" && <ApiTab slug={slug} endpoint="votes" title="Votações" />}
         {activeTab === "attendance" && <ApiTab slug={slug} endpoint="attendance" title="Presença" />}
-        {activeTab === "expenses" && <ApiTab slug={slug} endpoint="parliamentary-expenses" title="Gastos Parlamentares" />}
+        {activeTab === "expenses" && <ExpensesTab slug={slug} />}
         {activeTab === "news" && <ApiTab slug={slug} endpoint="news" title="Notícias" />}
         {activeTab === "promises" && <ApiTab slug={slug} endpoint="promises" title="Promessas de Campanha" />}
         {activeTab === "judicial" && <ApiTab slug={slug} endpoint="judicial-cases" title="Processos Judiciais" disclaimer="A existência de processo não implica culpa." />}
@@ -360,6 +360,196 @@ function formatLabel(key: string): string {
     total_confirmed_cases: "Processos",
   };
   return labels[key] || key.replace(/_/g, " ");
+}
+
+function ExpensesTab({ slug }: { slug: string }) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [year, setYear] = useState<string>("2026");
+  const [month, setMonth] = useState<string>("");
+  const [category, setCategory] = useState<string>("");
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (year) params.set("year", year);
+    if (month) params.set("month", month);
+    if (category) params.set("category", category);
+    params.set("page", String(page));
+    params.set("limit", "25");
+
+    fetch(`${API_URL}/api/v1/politicians/${slug}/parliamentary-expenses?${params}`)
+      .then((r) => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); })
+      .then(setData)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [slug, year, month, category, page]);
+
+  const items = data?.data || [];
+  const totalNet = data?.aggregates?.total_net_amount || 0;
+
+  // Compute stats from current page items
+  const categories = items.reduce((acc: Record<string, number>, e: any) => {
+    const cat = e.category || "Outros";
+    acc[cat] = (acc[cat] || 0) + (e.net_amount || 0);
+    return acc;
+  }, {} as Record<string, number>);
+
+  const topCategories = Object.entries(categories)
+    .sort(([,a], [,b]) => (b as number) - (a as number))
+    .slice(0, 5);
+
+  function clearFilters() { setYear("2026"); setMonth(""); setCategory(""); setPage(1); }
+
+  const months = ["","01","02","03","04","05","06","07","08","09","10","11","12"];
+
+  return (
+    <div className="space-y-6">
+      {/* Filters */}
+      <div className="bg-white rounded-lg border border-ifb-gray-medium p-4">
+        <div className="flex flex-wrap gap-3 items-end">
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Ano</label>
+            <select value={year} onChange={e => { setYear(e.target.value); setPage(1); }}
+              className="px-3 py-2 border border-ifb-gray-medium rounded text-sm">
+              <option value="2026">2026</option>
+              <option value="2025">2025</option>
+              <option value="2024">2024</option>
+              <option value="2023">2023</option>
+              <option value="">Todos</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Mês</label>
+            <select value={month} onChange={e => { setMonth(e.target.value); setPage(1); }}
+              className="px-3 py-2 border border-ifb-gray-medium rounded text-sm">
+              <option value="">Todos</option>
+              {months.slice(1).map(m => <option key={m} value={m}>{ ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"][parseInt(m)-1] }</option>)}
+            </select>
+          </div>
+          <div className="flex-1 min-w-[150px]">
+            <label className="text-xs text-gray-500 block mb-1">Categoria</label>
+            <input type="text" value={category} onChange={e => { setCategory(e.target.value); setPage(1); }}
+              placeholder="Filtrar por categoria..."
+              className="w-full px-3 py-2 border border-ifb-gray-medium rounded text-sm" />
+          </div>
+          <button onClick={clearFilters} className="px-3 py-2 text-xs text-gray-500 hover:text-ifb-black underline">
+            Limpar
+          </button>
+        </div>
+      </div>
+
+      {/* Summary */}
+      {!loading && !error && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-white rounded-lg border border-ifb-gray-medium p-4 text-center">
+            <p className="text-lg font-bold text-ifb-black">{formatCurrency(totalNet)}</p>
+            <p className="text-xs text-gray-500">Total líquido{year ? ` (${year})` : ""}</p>
+          </div>
+          <div className="bg-white rounded-lg border border-ifb-gray-medium p-4 text-center">
+            <p className="text-lg font-bold text-ifb-black">{items.length}</p>
+            <p className="text-xs text-gray-500">Despesas na página</p>
+          </div>
+          {topCategories.length > 0 && (
+            <div className="bg-white rounded-lg border border-ifb-gray-medium p-4 text-center col-span-2">
+              <p className="text-xs text-gray-500 mb-1">Principal categoria</p>
+              <p className="text-sm font-medium text-ifb-black truncate">{topCategories[0][0]}</p>
+              <p className="text-xs text-gray-400">{formatCurrency(topCategories[0][1] as number)}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Table */}
+      <div className="bg-white rounded-lg border border-ifb-gray-medium p-4">
+        <h2 className="text-lg font-semibold text-ifb-black mb-4">Gastos Parlamentares</h2>
+
+        {loading && <div className="animate-pulse space-y-2">{[1,2,3,4,5].map(i => <div key={i} className="h-8 bg-gray-100 rounded"/>)}</div>}
+
+        {error && <p className="text-red-600 text-sm">Erro ao carregar: {error}</p>}
+
+        {!loading && !error && items.length === 0 && (
+          <p className="text-gray-500 text-sm py-4 text-center">
+            Não há despesas importadas para os filtros selecionados.
+          </p>
+        )}
+
+        {!loading && !error && items.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-ifb-gray-medium text-left">
+                <th className="py-2 px-2 text-xs font-semibold text-gray-600">Mês</th>
+                <th className="py-2 px-2 text-xs font-semibold text-gray-600">Categoria</th>
+                <th className="py-2 px-2 text-xs font-semibold text-gray-600 hidden sm:table-cell">Fornecedor</th>
+                <th className="py-2 px-2 text-xs font-semibold text-gray-600 text-right">Valor líquido</th>
+                <th className="py-2 px-2 text-xs font-semibold text-gray-600 text-right hidden md:table-cell">Bruto</th>
+                <th className="py-2 px-2 text-xs font-semibold text-gray-600 hidden lg:table-cell">Doc</th>
+              </tr></thead>
+              <tbody>
+                {items.map((e: any, i: number) => (
+                  <tr key={i} className="border-b border-ifb-gray-light hover:bg-ifb-gray-light/50">
+                    <td className="py-2 px-2 text-gray-700">{e.month}/{e.year}</td>
+                    <td className="py-2 px-2 text-gray-700 max-w-[200px] truncate">{e.category}</td>
+                    <td className="py-2 px-2 text-gray-600 max-w-[150px] truncate hidden sm:table-cell">{e.supplier_name || "—"}</td>
+                    <td className="py-2 px-2 text-right font-medium text-ifb-black">{formatCurrency(e.net_amount)}</td>
+                    <td className="py-2 px-2 text-right text-gray-500 hidden md:table-cell">{formatCurrency(e.gross_amount)}</td>
+                    <td className="py-2 px-2 hidden lg:table-cell">
+                      {e.document_url ? <a href={e.document_url} target="_blank" rel="noopener" className="text-blue-600 text-xs hover:underline">Ver</a> : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {!loading && items.length > 0 && (
+          <div className="flex justify-between items-center mt-4 pt-3 border-t border-ifb-gray-light">
+            <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1}
+              className="px-3 py-1.5 text-xs border border-ifb-gray-medium rounded disabled:opacity-30">
+              Anterior
+            </button>
+            <span className="text-xs text-gray-500">Página {page}</span>
+            <button onClick={() => setPage(page + 1)} disabled={items.length < 25}
+              className="px-3 py-1.5 text-xs border border-ifb-gray-medium rounded disabled:opacity-30">
+              Próxima
+            </button>
+          </div>
+        )}
+
+        {/* Source */}
+        <p className="text-xs text-gray-400 mt-4 pt-3 border-t border-ifb-gray-light">
+          Fonte: Câmara dos Deputados — Dados Abertos (CEAP) · Valores em reais (R$) · Valor líquido = valor reembolsado ao parlamentar
+        </p>
+      </div>
+
+      {/* Category distribution */}
+      {topCategories.length > 1 && (
+        <div className="bg-white rounded-lg border border-ifb-gray-medium p-4">
+          <h3 className="text-sm font-semibold text-ifb-black mb-3">Distribuição por categoria (página atual)</h3>
+          <div className="space-y-2">
+            {topCategories.map(([cat, val]) => {
+              const pct = totalNet > 0 ? ((val as number) / totalNet * 100) : 0;
+              return (
+                <div key={cat}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-gray-700 truncate max-w-[70%]">{cat}</span>
+                    <span className="text-gray-500">{formatCurrency(val as number)}</span>
+                  </div>
+                  <div className="h-2 bg-ifb-gray-light rounded-full overflow-hidden">
+                    <div className="h-full bg-ifb-yellow rounded-full" style={{ width: `${Math.min(pct, 100)}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function LoadingSkeleton() {
