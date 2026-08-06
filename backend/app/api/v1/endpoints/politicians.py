@@ -93,33 +93,58 @@ async def list_politicians(
 async def get_politician(
     slug: str,
     service: PoliticianService = Depends(_get_politician_service),
+    db: AsyncSession = Depends(get_db),
 ):
     """Retorna perfil público do político."""
+    from sqlalchemy import select as sa_select
+    from app.models.politician import PoliticalParty, PoliticalPosition, PoliticianAlias, PoliticianSocialLink
+
     politician = await service.get_by_slug(slug)
     if not politician:
         raise NotFoundError(detail="Político não encontrado.")
 
+    # Load party explicitly
     party_resp = None
-    if politician.current_party:
-        party_resp = PartyResponse(
-            id=politician.current_party.id, name=politician.current_party.name,
-            acronym=politician.current_party.acronym,
-            electoral_number=politician.current_party.electoral_number,
-            logo_url=politician.current_party.logo_url,
-            status=politician.current_party.status,
+    if politician.current_party_id:
+        party_result = await db.execute(
+            sa_select(PoliticalParty).where(PoliticalParty.id == politician.current_party_id)
         )
+        party_obj = party_result.scalar_one_or_none()
+        if party_obj:
+            party_resp = PartyResponse(
+                id=party_obj.id, name=party_obj.name,
+                acronym=party_obj.acronym,
+                electoral_number=party_obj.electoral_number,
+                logo_url=party_obj.logo_url, status=party_obj.status,
+            )
 
+    # Load position explicitly
+    position_name = None
+    if politician.current_position_id:
+        pos_result = await db.execute(
+            sa_select(PoliticalPosition.name).where(PoliticalPosition.id == politician.current_position_id)
+        )
+        position_name = pos_result.scalar_one_or_none()
+
+    # Load aliases explicitly
+    alias_result = await db.execute(
+        sa_select(PoliticianAlias).where(PoliticianAlias.politician_id == politician.id)
+    )
     aliases = [
         AliasResponse(id=a.id, alias=a.alias, alias_type=a.alias_type, is_verified=a.is_verified)
-        for a in politician.aliases
+        for a in alias_result.scalars().all()
     ]
 
+    # Load social links explicitly
+    links_result = await db.execute(
+        sa_select(PoliticianSocialLink).where(PoliticianSocialLink.politician_id == politician.id)
+    )
     social_links = [
         SocialLinkResponse(
             id=s.id, platform=s.platform, url=s.url,
             username=s.username, is_official=s.is_official,
         )
-        for s in (politician.social_links or [])
+        for s in links_result.scalars().all()
     ]
 
     return PoliticianDetailResponse(
@@ -130,7 +155,7 @@ async def get_politician(
         education=politician.education, occupation=politician.occupation,
         photo_url=politician.photo_url, current_status=politician.current_status,
         current_party=party_resp,
-        current_position_name=politician.current_position.name if politician.current_position else None,
+        current_position_name=position_name,
         state_code=politician.state_code, city_name=politician.city_name,
         website_url=politician.website_url, is_verified=politician.is_verified,
         data_quality_score=politician.data_quality_score,
