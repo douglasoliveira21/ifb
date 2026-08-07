@@ -280,7 +280,7 @@ export default function HomePage() {
             </div>
             {[
               { title: "Navegação", links: [{ l: "Início", h: "/" }, { l: "Ranking", h: "/ranking" }, { l: "Notícias", h: "/noticias" }, { l: "Políticos", h: "/politicos" }, { l: "Transparência", h: "/transparencia" }, { l: "Sobre", h: "/sobre" }, { l: "Contato", h: "/contato" }] },
-              { title: "Políticos", links: [{ l: "Deputados", h: "/politicos?position=deputado" }, { l: "Senadores", h: "/politicos?position=senador" }, { l: "Todos", h: "/politicos" }] },
+              { title: "Políticos", links: [{ l: "Deputados", h: "/politicos?position=Deputado+Federal" }, { l: "Senadores", h: "/politicos?position=Senador" }, { l: "Partidos", h: "/partidos" }, { l: "Todos", h: "/politicos" }] },
               { title: "Institucional", links: [{ l: "Quem somos", h: "/sobre" }, { l: "Metodologia", h: "/metodologia" }, { l: "Privacidade", h: "/privacidade" }, { l: "Termos de Uso", h: "/termos" }, { l: "Doações", h: "/doar" }] },
               { title: "Transparência", links: [{ l: "Receitas e Despesas", h: "/transparencia" }, { l: "Doações", h: "/transparencia" }, { l: "Contratos", h: "/transparencia" }, { l: "Relatórios", h: "/transparencia" }] },
             ].map((col, i) => (

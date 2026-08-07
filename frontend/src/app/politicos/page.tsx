@@ -1,7 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
-import { useEffect, useState, useCallback } from "react";
+import { Suspense, useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 
@@ -13,11 +12,9 @@ interface Politician {
   ballot_name: string | null;
   slug: string;
   photo_url: string | null;
-  current_status: string;
   current_party: { acronym: string; name: string } | null;
   current_position_name: string | null;
   state_code: string | null;
-  city_name: string | null;
 }
 
 interface ApiResponse {
@@ -28,20 +25,19 @@ interface ApiResponse {
   pages: number;
 }
 
-const UF_LIST = [
-  "AC","AL","AM","AP","BA","CE","DF","ES","GO","MA","MG","MS","MT",
-  "PA","PB","PE","PI","PR","RJ","RN","RO","RR","RS","SC","SE","SP","TO",
-];
+const UF_LIST = ["AC","AL","AM","AP","BA","CE","DF","ES","GO","MA","MG","MS","MT","PA","PB","PE","PI","PR","RJ","RN","RO","RR","RS","SC","SE","SP","TO"];
+
+const PARTIES = ["MDB","PT","PL","PP","UNIÃO","PSD","REPUBLICANOS","PDT","PODE","PSB","PSOL","PSDB","NOVO","AVANTE","PCdoB","SOLIDARIEDADE","CIDADANIA","PRD","REDE"];
 
 export default function PoliticosPageWrapper() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-ifb-gray-light flex items-center justify-center"><p className="text-gray-500">Carregando...</p></div>}>
-      <PoliticosPageContent />
+    <Suspense fallback={<div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center"><p className="text-[13px] text-[#6B7280]">Carregando...</p></div>}>
+      <PoliticosPage />
     </Suspense>
   );
 }
 
-function PoliticosPageContent() {
+function PoliticosPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -49,29 +45,31 @@ function PoliticosPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Read filters from URL
   const currentQuery = searchParams?.get("q") || "";
   const currentState = searchParams?.get("state") || "";
+  const currentParty = searchParams?.get("party") || "";
+  const currentPosition = searchParams?.get("position") || "";
   const currentPage = parseInt(searchParams?.get("page") || "1", 10);
 
-  // Local form state
   const [query, setQuery] = useState(currentQuery);
   const [state, setState] = useState(currentState);
+  const [party, setParty] = useState(currentParty);
+  const [position, setPosition] = useState(currentPosition);
 
-  const fetchData = useCallback(async (q: string, st: string, page: number) => {
+  const fetchData = useCallback(async (q: string, st: string, pt: string, pos: string, page: number) => {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
       if (q) params.set("q", q);
       if (st) params.set("state", st);
+      if (pt) params.set("party", pt);
+      if (pos) params.set("position", pos);
       params.set("page", String(page));
-      params.set("limit", "18");
-
-      const res = await fetch(`${API_URL}/api/v1/politicians?${params.toString()}`);
+      params.set("limit", "20");
+      const res = await fetch(`${API_URL}/api/v1/politicians?${params}`);
       if (!res.ok) throw new Error(`Erro ${res.status}`);
-      const json: ApiResponse = await res.json();
-      setData(json);
+      setData(await res.json());
     } catch (e: any) {
       setError(e.message || "Erro ao carregar dados");
     } finally {
@@ -79,161 +77,125 @@ function PoliticosPageContent() {
     }
   }, []);
 
-  // Fetch on mount and when URL params change
   useEffect(() => {
-    fetchData(currentQuery, currentState, currentPage);
-  }, [currentQuery, currentState, currentPage, fetchData]);
+    fetchData(currentQuery, currentState, currentParty, currentPosition, currentPage);
+  }, [currentQuery, currentState, currentParty, currentPosition, currentPage, fetchData]);
 
-  function updateURL(q: string, st: string, page: number) {
+  function updateURL(q: string, st: string, pt: string, pos: string, page: number) {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (st) params.set("state", st);
+    if (pt) params.set("party", pt);
+    if (pos) params.set("position", pos);
     if (page > 1) params.set("page", String(page));
-    const qs = params.toString();
-    router.push(`/politicos${qs ? `?${qs}` : ""}`);
+    router.push(`/politicos${params.toString() ? `?${params}` : ""}`);
   }
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
-    updateURL(query, state, 1);
+    updateURL(query, state, party, position, 1);
   }
 
-  function handleStateChange(newState: string) {
-    setState(newState);
-    updateURL(query, newState, 1);
-  }
-
-  function goToPage(page: number) {
-    updateURL(currentQuery, currentState, page);
+  function clearFilters() {
+    setQuery(""); setState(""); setParty(""); setPosition("");
+    router.push("/politicos");
   }
 
   return (
-    <main className="min-h-screen bg-ifb-gray-light">
+    <main className="min-h-screen bg-[#FAFAFA]">
       {/* Header */}
-      <div className="bg-white border-b border-ifb-gray-medium">
-        <div className="max-w-7xl mx-auto px-4 py-8">
-          <div className="flex items-center justify-between">
+      <div className="bg-white border-b border-[#E5E7EB]">
+        <div className="max-w-[1440px] mx-auto px-6 lg:px-12 py-6">
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <h1 className="text-3xl font-bold text-ifb-black">Políticos</h1>
-              <p className="text-gray-600 mt-1 text-sm">
-                Pesquise informações públicas sobre políticos brasileiros.
-              </p>
+              <h1 className="text-[24px] font-bold text-[#111]">Políticos</h1>
+              <p className="text-[13px] text-[#6B7280] mt-1">Informações públicas sobre parlamentares brasileiros.</p>
             </div>
-            <Link href="/" className="text-sm text-gray-500 hover:text-ifb-black">
-              ← Início
-            </Link>
+            <div className="flex items-center gap-3">
+              <Link href="/ranking" className="text-[12px] font-medium text-[#F4B400] hover:underline">Ranking →</Link>
+              <Link href="/partidos" className="text-[12px] font-medium text-[#F4B400] hover:underline">Partidos →</Link>
+            </div>
           </div>
 
-          {/* Search + Filters */}
-          <form onSubmit={handleSearch} className="mt-6 flex flex-col sm:flex-row gap-3">
+          {/* Filters */}
+          <form onSubmit={handleSearch} className="flex flex-wrap gap-3">
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Nome, partido, cargo..."
-              className="flex-1 px-4 py-3 border border-ifb-gray-medium rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ifb-yellow"
-              aria-label="Pesquisar político"
+              placeholder="Buscar por nome..."
+              className="flex-1 min-w-[200px] h-[40px] px-4 border border-[#E5E7EB] rounded-[10px] text-[13px] outline-none focus:ring-2 focus:ring-[#F4B400] transition"
+              aria-label="Buscar político"
             />
-            <select
-              value={state}
-              onChange={(e) => handleStateChange(e.target.value)}
-              className="px-4 py-3 border border-ifb-gray-medium rounded-md bg-white text-sm focus:outline-none focus:ring-2 focus:ring-ifb-yellow"
-              aria-label="Filtrar por estado"
-            >
+            <select value={state} onChange={(e) => { setState(e.target.value); updateURL(query, e.target.value, party, position, 1); }} className="h-[40px] px-3 border border-[#E5E7EB] rounded-[10px] text-[13px] bg-white outline-none focus:ring-2 focus:ring-[#F4B400]" aria-label="Estado">
               <option value="">Todos os estados</option>
-              {UF_LIST.map((uf) => (
-                <option key={uf} value={uf}>{uf}</option>
-              ))}
+              {UF_LIST.map(uf => <option key={uf} value={uf}>{uf}</option>)}
             </select>
-            <button
-              type="submit"
-              className="bg-ifb-yellow text-ifb-black px-6 py-3 rounded-md text-sm font-semibold hover:bg-ifb-yellow-light transition"
-            >
-              Pesquisar
-            </button>
+            <select value={party} onChange={(e) => { setParty(e.target.value); updateURL(query, state, e.target.value, position, 1); }} className="h-[40px] px-3 border border-[#E5E7EB] rounded-[10px] text-[13px] bg-white outline-none focus:ring-2 focus:ring-[#F4B400]" aria-label="Partido">
+              <option value="">Todos os partidos</option>
+              {PARTIES.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <select value={position} onChange={(e) => { setPosition(e.target.value); updateURL(query, state, party, e.target.value, 1); }} className="h-[40px] px-3 border border-[#E5E7EB] rounded-[10px] text-[13px] bg-white outline-none focus:ring-2 focus:ring-[#F4B400]" aria-label="Casa">
+              <option value="">Câmara e Senado</option>
+              <option value="Deputado Federal">Câmara</option>
+              <option value="Senador">Senado</option>
+            </select>
+            <button type="submit" className="h-[40px] px-5 bg-[#F4B400] hover:bg-[#D9A000] text-[#111] text-[13px] font-semibold rounded-[10px] transition-colors">Buscar</button>
+            {(currentQuery || currentState || currentParty || currentPosition) && (
+              <button type="button" onClick={clearFilters} className="h-[40px] px-3 text-[12px] text-[#6B7280] hover:text-[#111] transition">Limpar</button>
+            )}
           </form>
         </div>
       </div>
 
       {/* Content */}
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Loading */}
+      <div className="max-w-[1440px] mx-auto px-6 lg:px-12 py-6">
         {loading && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="bg-white rounded-lg border border-ifb-gray-medium p-5 animate-pulse">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 bg-gray-200 rounded-full" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-4 bg-gray-200 rounded w-3/4" />
-                    <div className="h-3 bg-gray-200 rounded w-1/2" />
-                  </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className="bg-white border border-[#E5E7EB] rounded-[12px] p-4 animate-pulse">
+                <div className="flex items-center gap-3">
+                  <div className="w-[48px] h-[48px] bg-[#E9ECEF] rounded-full" />
+                  <div className="flex-1 space-y-2"><div className="h-3 bg-[#E9ECEF] rounded w-3/4" /><div className="h-2.5 bg-[#E9ECEF] rounded w-1/2" /></div>
                 </div>
               </div>
             ))}
           </div>
         )}
 
-        {/* Error */}
         {!loading && error && (
-          <div className="text-center py-16">
-            <p className="text-red-600 font-medium">{error}</p>
-            <button
-              onClick={() => fetchData(currentQuery, currentState, currentPage)}
-              className="mt-4 text-sm text-ifb-black underline"
-            >
-              Tentar novamente
-            </button>
+          <div className="text-center py-12">
+            <p className="text-[14px] text-red-600 mb-3">{error}</p>
+            <button onClick={() => fetchData(currentQuery, currentState, currentParty, currentPosition, currentPage)} className="text-[13px] text-[#111] underline">Tentar novamente</button>
           </div>
         )}
 
-        {/* Empty */}
         {!loading && !error && data && data.items.length === 0 && (
           <div className="text-center py-16">
-            <p className="text-gray-500 text-lg">Nenhum político encontrado.</p>
-            {(currentQuery || currentState) && (
-              <button
-                onClick={() => { setQuery(""); setState(""); updateURL("", "", 1); }}
-                className="mt-4 text-sm text-ifb-black underline"
-              >
-                Limpar filtros
-              </button>
-            )}
+            <p className="text-[15px] text-[#6B7280]">Nenhum político encontrado com os filtros selecionados.</p>
+            <button onClick={clearFilters} className="mt-3 text-[13px] text-[#F4B400] hover:underline">Limpar filtros</button>
           </div>
         )}
 
-        {/* Results */}
         {!loading && !error && data && data.items.length > 0 && (
           <>
-            <p className="text-sm text-gray-500 mb-4">
-              {data.total} resultado(s) encontrado(s)
-            </p>
+            <p className="text-[12px] text-[#9CA3AF] mb-4">{data.total.toLocaleString("pt-BR")} resultado(s)</p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {data.items.map((p) => (
-                <Link
-                  key={p.id}
-                  href={`/politicos/${p.slug}`}
-                  className="bg-white rounded-lg border border-ifb-gray-medium p-5 hover:shadow-md transition group"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-ifb-gray-medium rounded-full flex-shrink-0 overflow-hidden">
-                      {p.photo_url && (
-                        <img src={p.photo_url} alt="" className="w-full h-full object-cover" />
-                      )}
+                <Link key={p.id} href={`/politicos/${p.slug}`} className="bg-white border border-[#E5E7EB] rounded-[12px] p-4 hover:border-[#F4B400] hover:shadow-sm transition group">
+                  <div className="flex items-center gap-3">
+                    <div className="w-[48px] h-[48px] rounded-full bg-[#E9ECEF] overflow-hidden flex-shrink-0">
+                      {p.photo_url && <img src={p.photo_url} alt="" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />}
                     </div>
-                    <div className="min-w-0">
-                      <h2 className="font-semibold text-ifb-black truncate group-hover:text-ifb-yellow transition">
-                        {p.full_name}
-                      </h2>
-                      <p className="text-sm text-gray-600 truncate">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-semibold text-[#111] truncate group-hover:text-[#F4B400] transition">{p.full_name}</p>
+                      <p className="text-[11px] text-[#6B7280] truncate">
                         {p.current_party?.acronym || "Sem partido"}
                         {p.state_code && ` · ${p.state_code}`}
                       </p>
                       {p.current_position_name && (
-                        <p className="text-xs text-gray-500 mt-0.5 truncate">
-                          {p.current_position_name}
-                        </p>
+                        <p className="text-[10px] text-[#9CA3AF] mt-0.5 truncate">{p.current_position_name}</p>
                       )}
                     </div>
                   </div>
@@ -244,23 +206,9 @@ function PoliticosPageContent() {
             {/* Pagination */}
             {data.pages > 1 && (
               <div className="flex justify-center items-center gap-2 mt-8">
-                <button
-                  onClick={() => goToPage(currentPage - 1)}
-                  disabled={currentPage <= 1}
-                  className="px-4 py-2 text-sm border border-ifb-gray-medium rounded-md disabled:opacity-30 hover:bg-ifb-gray-light transition"
-                >
-                  Anterior
-                </button>
-                <span className="text-sm text-gray-600 px-3">
-                  {currentPage} de {data.pages}
-                </span>
-                <button
-                  onClick={() => goToPage(currentPage + 1)}
-                  disabled={currentPage >= data.pages}
-                  className="px-4 py-2 text-sm border border-ifb-gray-medium rounded-md disabled:opacity-30 hover:bg-ifb-gray-light transition"
-                >
-                  Próxima
-                </button>
+                <button onClick={() => updateURL(currentQuery, currentState, currentParty, currentPosition, currentPage - 1)} disabled={currentPage <= 1} className="px-4 py-2 text-[12px] border border-[#E5E7EB] rounded-[8px] disabled:opacity-30 hover:bg-[#F6F7F9] transition">Anterior</button>
+                <span className="text-[12px] text-[#6B7280] px-3">{currentPage} de {data.pages}</span>
+                <button onClick={() => updateURL(currentQuery, currentState, currentParty, currentPosition, currentPage + 1)} disabled={currentPage >= data.pages} className="px-4 py-2 text-[12px] border border-[#E5E7EB] rounded-[8px] disabled:opacity-30 hover:bg-[#F6F7F9] transition">Próxima</button>
               </div>
             )}
           </>

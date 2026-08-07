@@ -16,6 +16,7 @@ from app.api.v1.endpoints import (
     legislative,
     mfa,
     news,
+    parties,
     politicians,
     promises,
     stats,
@@ -40,6 +41,9 @@ api_router.include_router(users.router)
 
 # Políticos (público)
 api_router.include_router(politicians.router)
+
+# Partidos (público)
+api_router.include_router(parties.router)
 
 # Dados eleitorais (público)
 api_router.include_router(electoral.router)
