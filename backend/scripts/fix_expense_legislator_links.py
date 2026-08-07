@@ -35,34 +35,35 @@ async def main():
     print(f"  CORRIGINDO VÍNCULO DE DESPESAS")
     print(f"{'=' * 60}\n")
 
-    # 1. Download one CSV to get ideCadastro → nome mapping
-    print("  Baixando CSV 2025 para mapeamento...")
-    async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
-        resp = await client.get("https://www.camara.leg.br/cotas/Ano-2025.csv.zip")
-        if resp.status_code != 200:
-            print(f"  Erro download: {resp.status_code}")
-            return
-
-    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
-        csv_file = [n for n in zf.namelist() if n.endswith(".csv")][0]
-        csv_text = zf.read(csv_file).decode("utf-8", errors="replace")
-
-    reader = csv.DictReader(io.StringIO(csv_text), delimiter=";")
-
-    # Build mapping: ideCadastro → txNomeParlamentar
+    # 1. Download CSVs to get ideCadastro → nome mapping (need 2023+2024 for older IDs)
     id_to_name: dict[str, str] = {}
-    for row in reader:
-        ide = str(row.get("ideCadastro") or "").strip()
-        # Column name has BOM and quotes: '\ufeff"txNomeParlamentar"'
-        nome = ""
-        for k, v in row.items():
-            if "nomeparlamentar" in k.lower().replace('"', ''):
-                nome = (v or "").strip()
-                break
-        if ide and nome and ide not in id_to_name:
-            id_to_name[ide] = nome
 
-    print(f"  Mapeamento CSV: {len(id_to_name)} deputados (ideCadastro → nome)")
+    for year in [2024, 2023, 2025]:
+        print(f"  Baixando CSV {year} para mapeamento...")
+        async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+            resp = await client.get(f"https://www.camara.leg.br/cotas/Ano-{year}.csv.zip")
+            if resp.status_code != 200:
+                print(f"  Erro download {year}: {resp.status_code}")
+                continue
+
+        with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+            csv_file = [n for n in zf.namelist() if n.endswith(".csv")][0]
+            csv_text = zf.read(csv_file).decode("utf-8", errors="replace")
+
+        reader = csv.DictReader(io.StringIO(csv_text), delimiter=";")
+        count_before = len(id_to_name)
+        for row in reader:
+            ide = str(row.get("ideCadastro") or "").strip()
+            nome = ""
+            for k, v in row.items():
+                if "nomeparlamentar" in k.lower().replace('"', ''):
+                    nome = (v or "").strip()
+                    break
+            if ide and nome and ide not in id_to_name:
+                id_to_name[ide] = nome
+        print(f"  {year}: +{len(id_to_name) - count_before} novos (total: {len(id_to_name)})")
+
+    print(f"  Mapeamento final: {len(id_to_name)} deputados (ideCadastro → nome)")
 
     # 2. Connect to DB and fix
     engine = create_async_engine(settings.database_url, pool_size=3, max_overflow=0)
