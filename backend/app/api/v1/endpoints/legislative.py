@@ -294,10 +294,15 @@ async def get_parliamentary_expenses(
             ParliamentaryExpense.legislator_id.in_(legislator_ids)
         )
     else:
-        # Search by external_id prefix (format: camara_id-year-month-doc)
-        query = select(ParliamentaryExpense).where(
-            ParliamentaryExpense.external_id.like(f"{camara_id}-%")
-        )
+        # Search by external_id prefix OR by legislator_id
+        legislator_ids = await _get_legislator_ids(slug, db)
+
+        from sqlalchemy import or_
+        conditions = [ParliamentaryExpense.external_id.like(f"{camara_id}-%")]
+        if legislator_ids:
+            conditions.append(ParliamentaryExpense.legislator_id.in_(legislator_ids))
+
+        query = select(ParliamentaryExpense).where(or_(*conditions))
 
     if year:
         query = query.where(ParliamentaryExpense.year == year)
@@ -317,7 +322,11 @@ async def get_parliamentary_expenses(
     # Aggregates
     agg_query = select(sa_func.sum(ParliamentaryExpense.net_amount))
     if camara_id:
-        agg_query = agg_query.where(ParliamentaryExpense.external_id.like(f"{camara_id}-%"))
+        from sqlalchemy import or_ as or_agg
+        agg_conditions = [ParliamentaryExpense.external_id.like(f"{camara_id}-%")]
+        if legislator_ids:
+            agg_conditions.append(ParliamentaryExpense.legislator_id.in_(legislator_ids))
+        agg_query = agg_query.where(or_agg(*agg_conditions))
     if year:
         agg_query = agg_query.where(ParliamentaryExpense.year == year)
     total_amount = (await db.execute(agg_query)).scalar_one_or_none() or 0
