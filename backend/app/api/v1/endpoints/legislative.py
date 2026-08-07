@@ -295,12 +295,32 @@ async def get_parliamentary_expenses(
         )
     else:
         # Search by external_id prefix OR by legislator_id
+        # Also search by ALL legislators in the house with same name (CSV uses different IDs)
         legislator_ids = await _get_legislator_ids(slug, db)
 
         from sqlalchemy import or_
+
+        # Get politician name for broader search
+        all_leg_ids = list(legislator_ids) if legislator_ids else []
+
+        # Also find any legislator in house CD that has expenses with this camara_id prefix
+        # AND any legislator that shares the politician's name (CSV created nameless ones)
+        pol_name = politician.full_name
+        name_legs = await db.execute(
+            select(Legislator.id).where(
+                Legislator.full_name == pol_name,
+                Legislator.house_id.in_(
+                    select(LegislativeHouse.id).where(LegislativeHouse.acronym == "CD")
+                ),
+            )
+        )
+        for lid in name_legs.scalars().all():
+            if lid not in all_leg_ids:
+                all_leg_ids.append(lid)
+
         conditions = [ParliamentaryExpense.external_id.like(f"{camara_id}-%")]
-        if legislator_ids:
-            conditions.append(ParliamentaryExpense.legislator_id.in_(legislator_ids))
+        if all_leg_ids:
+            conditions.append(ParliamentaryExpense.legislator_id.in_(all_leg_ids))
 
         query = select(ParliamentaryExpense).where(or_(*conditions))
 
