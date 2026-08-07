@@ -132,26 +132,17 @@ async def fetch_all_votacoes(client: httpx.AsyncClient, start: str, end: str) ->
         params = {
             "dataInicio": start,
             "dataFim": end,
-            "idLegislatura": "57",
             "ordem": "ASC",
             "ordenarPor": "dataHoraRegistro",
-            "itens": items_per_page,
-            "pagina": page,
+            "itens": str(items_per_page),
+            "pagina": str(page),
         }
         resp = await client.get(f"{CAMARA_API}/votacoes", params=params)
 
-        if resp.status_code == 400:
-            # Try without date range (some periods may be invalid)
-            print(f"  Status 400 com datas. Tentando sem dataFim...")
-            params.pop("dataFim", None)
-            resp = await client.get(f"{CAMARA_API}/votacoes", params=params)
-
         if resp.status_code != 200:
-            # Print response body for debugging
-            print(f"  Erro ao buscar votações página {page}: {resp.status_code}")
+            print(f"  Erro página {page}: {resp.status_code}")
             try:
-                err_body = resp.text[:200]
-                print(f"  Resposta: {err_body}")
+                print(f"  Resposta: {resp.text[:300]}")
             except Exception:
                 pass
             break
@@ -166,7 +157,7 @@ async def fetch_all_votacoes(client: httpx.AsyncClient, start: str, end: str) ->
         if len(data) < items_per_page:
             break
         page += 1
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.5)
 
     return all_votes
 
@@ -276,21 +267,33 @@ async def main():
         house = await get_or_create_house(db)
 
         async with httpx.AsyncClient(timeout=30, headers={"Accept": "application/json"}) as client:
-            # 1. Fetch all vote events in period
-            print("  [1/2] Buscando votações no período...")
-            votacoes = await fetch_all_votacoes(client, START_DATE, END_DATE)
-            print(f"  Total de votações encontradas: {len(votacoes)}\n")
+            # Split into 3-month chunks to avoid API limits
+            from datetime import date, timedelta
+            start_d = date.fromisoformat(START_DATE)
+            end_d = date.fromisoformat(END_DATE)
 
-            if not votacoes:
+            all_votacoes: list[dict] = []
+            chunk_start = start_d
+            while chunk_start < end_d:
+                chunk_end = min(chunk_start + timedelta(days=90), end_d)
+                print(f"  Buscando: {chunk_start} a {chunk_end}...")
+                chunk = await fetch_all_votacoes(client, str(chunk_start), str(chunk_end))
+                all_votacoes.extend(chunk)
+                chunk_start = chunk_end + timedelta(days=1)
+                await asyncio.sleep(0.5)
+
+            print(f"\n  Total de votações encontradas: {len(all_votacoes)}\n")
+
+            if not all_votacoes:
                 print("  Nenhuma votação encontrada no período.")
                 await engine.dispose()
                 return
 
             # 2. Process each vote event
-            print("  [2/2] Processando votos individuais...")
+            print("  Processando votos individuais...")
             totals = {"events_created": 0, "votes_created": 0, "votes_skipped": 0, "errors": 0}
 
-            for i, votacao in enumerate(votacoes):
+            for i, votacao in enumerate(all_votacoes):
                 try:
                     stats = await sync_vote_event(db, client, house, votacao)
                     if stats["created_event"]:
@@ -305,7 +308,7 @@ async def main():
                 # Progress report every 20
                 if (i + 1) % 20 == 0:
                     await db.flush()
-                    print(f"    ... {i + 1}/{len(votacoes)} | eventos={totals['events_created']} votos={totals['votes_created']} skip={totals['votes_skipped']} err={totals['errors']}")
+                    print(f"    ... {i + 1}/{len(all_votacoes)} | eventos={totals['events_created']} votos={totals['votes_created']} skip={totals['votes_skipped']} err={totals['errors']}")
 
             await db.commit()
 
@@ -314,7 +317,7 @@ async def main():
     print(f"\n{'=' * 60}")
     print(f"  RESULTADO")
     print(f"{'=' * 60}")
-    print(f"  Votações processadas: {len(votacoes)}")
+    print(f"  Votações processadas: {len(all_votacoes)}")
     print(f"  Eventos novos criados: {totals['events_created']}")
     print(f"  Votos individuais criados: {totals['votes_created']}")
     print(f"  Votos duplicados (skip): {totals['votes_skipped']}")
