@@ -88,6 +88,8 @@ async def main():
                     if not data:
                         continue
 
+                    updated = False
+
                     # Nome civil → will be shown in sidebar (not biography)
                     nome_civil = data.get("nomeCivil")
                     # We store nomeCivil in birth_place temporarily or as part of the flow
