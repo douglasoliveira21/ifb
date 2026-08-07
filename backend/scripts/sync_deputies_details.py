@@ -86,11 +86,13 @@ async def main():
 
                     data = resp.json().get("dados", {})
                     if not data:
+                        stats["errors"] += 1
                         continue
 
                     updated = False
+                    gabinete = data.get("ultimoStatus", {}).get("gabinete", {}) or {}
 
-                    # Nome civil → will be shown in sidebar (not biography)
+                    # Nome civil → social_link
                     nome_civil = data.get("nomeCivil")
                     # We store nomeCivil in birth_place temporarily or as part of the flow
                     # The frontend already shows full_name; nomeCivil goes to social_links
@@ -136,7 +138,6 @@ async def main():
                         updated = True
 
                     # Gabinete info → city_name (local de exercício)
-                    gabinete = data.get("ultimoStatus", {}).get("gabinete", {})
                     if not dep.city_name:
                         dep.city_name = "Brasília/DF"
                         updated = True
