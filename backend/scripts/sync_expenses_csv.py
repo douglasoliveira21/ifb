@@ -76,7 +76,7 @@ async def main():
     # Show column names for debug
     print(f"  Colunas: {list(rows[0].keys())[:10]}")
 
-    engine = create_async_engine(settings.database_url, pool_size=5, max_overflow=3)
+    engine = create_async_engine(settings.database_url, pool_size=3, max_overflow=0)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with factory() as db:
@@ -92,6 +92,15 @@ async def main():
         leg_r = await db.execute(select(Legislator).where(Legislator.house_id == house.id))
         legislators = {leg.external_id: leg for leg in leg_r.scalars().all()}
         print(f"  Legisladores no banco: {len(legislators)}")
+
+        # Load existing external_ids for this year to skip duplicates in memory
+        existing_r = await db.execute(
+            select(ParliamentaryExpense.external_id).where(
+                ParliamentaryExpense.year == YEAR
+            )
+        )
+        existing_ids = set(r for r in existing_r.scalars().all() if r)
+        print(f"  Despesas já importadas ({YEAR}): {len(existing_ids)}")
 
         stats = {"created": 0, "duplicates": 0, "no_legislator": 0, "errors": 0}
 
@@ -151,11 +160,8 @@ async def main():
                 # External ID for deduplication
                 ext_id = f"{dep_id}-{YEAR}-{mes}-{doc_num}"
 
-                # Check duplicate
-                existing = await db.execute(
-                    select(ParliamentaryExpense.id).where(ParliamentaryExpense.external_id == ext_id)
-                )
-                if existing.scalar_one_or_none():
+                # Check duplicate in memory (no DB query)
+                if ext_id in existing_ids:
                     stats["duplicates"] += 1
                     continue
 
@@ -175,6 +181,7 @@ async def main():
                     source_url=CSV_URL,
                 ))
                 stats["created"] += 1
+                existing_ids.add(ext_id)
 
             except Exception as e:
                 stats["errors"] += 1
@@ -182,7 +189,7 @@ async def main():
                     print(f"  Erro linha {i}: {e}")
                     print(f"  Row: {dict(list(row.items())[:5])}")
 
-            if (i + 1) % 5000 == 0:
+            if (i + 1) % 2000 == 0:
                 await db.flush()
                 print(f"  ... {i+1}/{len(rows)} | criadas={stats['created']} dupes={stats['duplicates']} erros={stats['errors']}")
 
