@@ -5,14 +5,12 @@
 @layer base {
   html {
     font-family: "Inter", system-ui, -apple-system, sans-serif;
-    overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
   body {
-    @apply bg-ifb-bg text-ifb-gray-900;
-    overflow-x: hidden;
+    @apply bg-ifb-white text-ifb-black;
   }
 
   *:focus-visible {
@@ -22,31 +20,37 @@
 
 @layer components {
   .btn-primary {
-    @apply bg-ifb-yellow text-ifb-black px-6 py-3 rounded-ifb-btn font-semibold
-           hover:bg-ifb-yellow-hover transition-all duration-200 text-sm;
+    @apply bg-ifb-yellow text-ifb-black px-6 py-3 font-bold text-sm uppercase tracking-wide
+           hover:bg-ifb-yellow-hover transition-all duration-150 border-2 border-ifb-black;
   }
 
   .btn-secondary {
-    @apply bg-white border border-ifb-gray-200 text-ifb-gray-900 px-6 py-3 rounded-ifb-btn font-medium
-           hover:bg-ifb-gray-50 transition-all duration-200 text-sm;
+    @apply bg-ifb-black text-ifb-white px-6 py-3 font-bold text-sm uppercase tracking-wide
+           hover:bg-ifb-black-soft transition-all duration-150 border-2 border-ifb-black;
   }
 
-  .card {
-    @apply bg-white border border-ifb-gray-200 rounded-ifb p-6 shadow-ifb
-           hover:shadow-ifb-md transition-shadow duration-200;
+  .btn-outline {
+    @apply bg-transparent text-ifb-black px-6 py-3 font-bold text-sm uppercase tracking-wide
+           border-2 border-ifb-black hover:bg-ifb-black hover:text-ifb-white transition-all duration-150;
   }
 
-  .card-lg {
-    @apply bg-white border border-ifb-gray-200 rounded-ifb-lg p-8 shadow-ifb;
+  .card-ifb {
+    @apply bg-ifb-white border-2 border-ifb-gray-200 p-6;
   }
 
-  .input {
-    @apply w-full px-4 py-3 border border-ifb-gray-200 rounded-ifb-btn text-sm
-           focus:outline-none focus:ring-2 focus:ring-ifb-yellow focus:border-transparent
-           placeholder:text-ifb-gray-400 transition-all duration-200;
+  .card-ifb-dark {
+    @apply bg-ifb-black text-ifb-white border-2 border-ifb-gray-800 p-6;
   }
 
-  .container-ifb {
-    @apply max-w-ifb mx-auto px-4 sm:px-6 lg:px-8;
+  .card-ifb-yellow {
+    @apply bg-ifb-yellow text-ifb-black border-2 border-ifb-black p-6;
+  }
+
+  .section-title {
+    @apply text-2xl sm:text-3xl font-bold uppercase tracking-tight text-ifb-black;
+  }
+
+  .tag-preparation {
+    @apply inline-block px-3 py-1 bg-ifb-black text-ifb-yellow text-[10px] font-bold uppercase tracking-wider border border-ifb-yellow;
   }
 }
