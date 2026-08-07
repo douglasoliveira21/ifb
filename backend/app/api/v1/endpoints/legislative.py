@@ -290,39 +290,22 @@ async def get_parliamentary_expenses(
             return {"data": [], "aggregates": {"total_net_amount": 0},
                     "metadata": LegislativeMetadata(availability="not_available").model_dump()}
 
+        from sqlalchemy import or_
         query = select(ParliamentaryExpense).where(
             ParliamentaryExpense.legislator_id.in_(legislator_ids)
         )
+        agg_filter = ParliamentaryExpense.legislator_id.in_(legislator_ids)
     else:
-        # Search by external_id prefix OR by legislator_id
-        # Also search by ALL legislators in the house with same name (CSV uses different IDs)
+        # Search by external_id prefix OR by legislator_id (covers both API and CSV imports)
         legislator_ids = await _get_legislator_ids(slug, db)
 
         from sqlalchemy import or_
-
-        # Get politician name for broader search
-        all_leg_ids = list(legislator_ids) if legislator_ids else []
-
-        # Also find any legislator in house CD that has expenses with this camara_id prefix
-        # AND any legislator that shares the politician's name (CSV created nameless ones)
-        pol_name = politician.full_name
-        name_legs = await db.execute(
-            select(Legislator.id).where(
-                Legislator.full_name == pol_name,
-                Legislator.house_id.in_(
-                    select(LegislativeHouse.id).where(LegislativeHouse.acronym == "CD")
-                ),
-            )
-        )
-        for lid in name_legs.scalars().all():
-            if lid not in all_leg_ids:
-                all_leg_ids.append(lid)
-
         conditions = [ParliamentaryExpense.external_id.like(f"{camara_id}-%")]
-        if all_leg_ids:
-            conditions.append(ParliamentaryExpense.legislator_id.in_(all_leg_ids))
+        if legislator_ids:
+            conditions.append(ParliamentaryExpense.legislator_id.in_(legislator_ids))
 
         query = select(ParliamentaryExpense).where(or_(*conditions))
+        agg_filter = or_(*conditions)
 
     if year:
         query = query.where(ParliamentaryExpense.year == year)
@@ -340,13 +323,7 @@ async def get_parliamentary_expenses(
     expenses = result.scalars().all()
 
     # Aggregates
-    agg_query = select(sa_func.sum(ParliamentaryExpense.net_amount))
-    if camara_id:
-        from sqlalchemy import or_ as or_agg
-        agg_conditions = [ParliamentaryExpense.external_id.like(f"{camara_id}-%")]
-        if legislator_ids:
-            agg_conditions.append(ParliamentaryExpense.legislator_id.in_(legislator_ids))
-        agg_query = agg_query.where(or_agg(*agg_conditions))
+    agg_query = select(sa_func.sum(ParliamentaryExpense.net_amount)).where(agg_filter)
     if year:
         agg_query = agg_query.where(ParliamentaryExpense.year == year)
     total_amount = (await db.execute(agg_query)).scalar_one_or_none() or 0
