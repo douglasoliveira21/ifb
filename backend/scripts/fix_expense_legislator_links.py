@@ -53,7 +53,12 @@ async def main():
     id_to_name: dict[str, str] = {}
     for row in reader:
         ide = str(row.get("ideCadastro") or "").strip()
-        nome = (row.get("\ufefftxNomeParlamentar") or row.get("txNomeParlamentar") or "").strip()
+        # Column name has BOM and quotes: '\ufeff"txNomeParlamentar"'
+        nome = ""
+        for k, v in row.items():
+            if "nomeparlamentar" in k.lower().replace('"', ''):
+                nome = (v or "").strip()
+                break
         if ide and nome and ide not in id_to_name:
             id_to_name[ide] = nome
 
