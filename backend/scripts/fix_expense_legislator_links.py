@@ -35,7 +35,7 @@ async def main():
     print(f"  CORRIGINDO VÍNCULO DE DESPESAS")
     print(f"{'=' * 60}\n")
 
-    # 1. Download CSVs to get ideCadastro → nome mapping (need 2023+2024 for older IDs)
+    # 1. Download CSVs to get nuDeputadoId → nome mapping
     id_to_name: dict[str, str] = {}
 
     for year in [2024, 2023, 2025]:
@@ -53,7 +53,8 @@ async def main():
         reader = csv.DictReader(io.StringIO(csv_text), delimiter=";")
         count_before = len(id_to_name)
         for row in reader:
-            ide = str(row.get("ideCadastro") or "").strip()
+            # The actual ID used by the import script is nuDeputadoId
+            ide = str(row.get("nuDeputadoId") or "").strip()
             nome = ""
             for k, v in row.items():
                 if "nomeparlamentar" in k.lower().replace('"', ''):
@@ -63,7 +64,7 @@ async def main():
                 id_to_name[ide] = nome
         print(f"  {year}: +{len(id_to_name) - count_before} novos (total: {len(id_to_name)})")
 
-    print(f"  Mapeamento final: {len(id_to_name)} deputados (ideCadastro → nome)")
+    print(f"  Mapeamento final: {len(id_to_name)} deputados (nuDeputadoId → nome)")
 
     # 2. Connect to DB and fix
     engine = create_async_engine(settings.database_url, pool_size=3, max_overflow=0)
