@@ -34,7 +34,7 @@ CAMARA_API = "https://dadosabertos.camara.leg.br/api/v2"
 
 # Mandato atual: Legislatura 57 (2023-02-01 a 2027-01-31)
 DEFAULT_START = "2023-02-01"
-DEFAULT_END = "2026-12-31"
+DEFAULT_END = datetime.now(UTC).strftime("%Y-%m-%d")  # Today (API rejects future dates)
 
 # Parse CLI args
 START_DATE = DEFAULT_START
@@ -132,14 +132,28 @@ async def fetch_all_votacoes(client: httpx.AsyncClient, start: str, end: str) ->
         params = {
             "dataInicio": start,
             "dataFim": end,
+            "idLegislatura": "57",
             "ordem": "ASC",
             "ordenarPor": "dataHoraRegistro",
             "itens": items_per_page,
             "pagina": page,
         }
         resp = await client.get(f"{CAMARA_API}/votacoes", params=params)
+
+        if resp.status_code == 400:
+            # Try without date range (some periods may be invalid)
+            print(f"  Status 400 com datas. Tentando sem dataFim...")
+            params.pop("dataFim", None)
+            resp = await client.get(f"{CAMARA_API}/votacoes", params=params)
+
         if resp.status_code != 200:
+            # Print response body for debugging
             print(f"  Erro ao buscar votações página {page}: {resp.status_code}")
+            try:
+                err_body = resp.text[:200]
+                print(f"  Resposta: {err_body}")
+            except Exception:
+                pass
             break
 
         data = resp.json().get("dados", [])
