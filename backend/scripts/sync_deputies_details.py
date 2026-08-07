@@ -1,11 +1,11 @@
 """
-Sincronização de detalhes dos deputados — biografia, contato, município, nascimento.
+Sincronização de detalhes dos deputados — sobrescreve com dados frescos da API.
 Execute: python scripts/sync_deputies_details.py [batch_size] [offset]
 
-Atualiza cada deputado com dados completos da API da Câmara:
-- Biografia (nomeCivil, escolaridade, dataNascimento, municipioNascimento)
-- Contato (email, telefone, gabinete)
-- Foto atualizada
+Atualiza SEMPRE com dados da API (não pula campos preenchidos):
+- Escolaridade, gênero, nascimento, naturalidade, foto
+- Email e telefone do gabinete
+- Nome civil como social_link
 
 Fonte: https://dadosabertos.camara.leg.br/api/v2/deputados/{id}
 """
@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
@@ -50,7 +50,6 @@ async def main():
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with factory() as db:
-        # Get deputies
         pos_r = await db.execute(
             select(PoliticalPosition.id).where(PoliticalPosition.name == "Deputado Federal")
         )
@@ -90,112 +89,107 @@ async def main():
                         continue
 
                     updated = False
-                    gabinete = data.get("ultimoStatus", {}).get("gabinete", {}) or {}
+                    ultimo_status = data.get("ultimoStatus", {}) or {}
+                    gabinete = ultimo_status.get("gabinete", {}) or {}
 
-                    # Nome civil → social_link
-                    nome_civil = data.get("nomeCivil")
-                    # We store nomeCivil in birth_place temporarily or as part of the flow
-                    # The frontend already shows full_name; nomeCivil goes to social_links
-                    if nome_civil and nome_civil != dep.full_name:
-                        existing_nc = await db.execute(
-                            select(PoliticianSocialLink).where(
-                                PoliticianSocialLink.politician_id == dep.id,
-                                PoliticianSocialLink.platform == "nome_civil",
-                            )
-                        )
-                        if not existing_nc.scalar_one_or_none():
-                            db.add(PoliticianSocialLink(
-                                politician_id=dep.id,
-                                platform="nome_civil",
-                                url=nome_civil,
-                                username=nome_civil,
-                                is_official=True,
-                                source_id="camara_api",
-                            ))
-
+                    # Escolaridade
                     escolaridade = data.get("escolaridade")
-                    if escolaridade and not dep.education:
+                    if escolaridade:
                         dep.education = escolaridade
                         updated = True
 
+                    # Gênero
                     sexo = data.get("sexo")
-                    if sexo and not dep.gender:
+                    if sexo:
                         dep.gender = "Masculino" if sexo == "M" else "Feminino" if sexo == "F" else sexo
                         updated = True
 
+                    # Data de nascimento
                     nascimento = data.get("dataNascimento")
-                    if nascimento and not dep.birth_date:
+                    if nascimento:
                         try:
                             dep.birth_date = datetime.strptime(nascimento, "%Y-%m-%d").date()
                             updated = True
                         except ValueError:
                             pass
 
-                    municipio_nasc = data.get("municipioNascimento")
+                    # Município de nascimento
+                    municipio = data.get("municipioNascimento")
                     uf_nasc = data.get("ufNascimento")
-                    if municipio_nasc and not dep.birth_place:
-                        dep.birth_place = f"{municipio_nasc}/{uf_nasc}" if uf_nasc else municipio_nasc
+                    if municipio:
+                        dep.birth_place = f"{municipio}/{uf_nasc}" if uf_nasc else municipio
                         updated = True
 
-                    # Gabinete info → city_name (local de exercício)
-                    if not dep.city_name:
-                        dep.city_name = "Brasília/DF"
+                    # Cidade de exercício
+                    dep.city_name = "Brasília/DF"
+
+                    # Foto atualizada
+                    foto = ultimo_status.get("urlFoto")
+                    if foto:
+                        dep.photo_url = foto
                         updated = True
 
-                    # Photo
-                    photo = data.get("ultimoStatus", {}).get("urlFoto")
-                    if photo and photo != dep.photo_url:
-                        dep.photo_url = photo
+                    # Limpar biografia que era "Nome civil: X"
+                    if dep.biography and dep.biography.startswith("Nome civil:"):
+                        dep.biography = None
                         updated = True
 
                     if updated:
                         stats["updated"] += 1
 
+                    # === CONTATOS (email, telefone, nome civil) ===
+
                     # Email
-                    email = gabinete.get("email") if gabinete else None
-                    if not email:
-                        email = data.get("ultimoStatus", {}).get("email")
+                    email = gabinete.get("email") or ultimo_status.get("email")
                     if email:
-                        existing_email = await db.execute(
-                            select(PoliticianSocialLink).where(
+                        # Remove existente e recria (atualização)
+                        await db.execute(
+                            delete(PoliticianSocialLink).where(
                                 PoliticianSocialLink.politician_id == dep.id,
                                 PoliticianSocialLink.platform == "email",
                             )
                         )
-                        if not existing_email.scalar_one_or_none():
-                            db.add(PoliticianSocialLink(
-                                politician_id=dep.id,
-                                platform="email",
-                                url=f"mailto:{email}",
-                                username=email,
-                                is_official=True,
-                                source_id="camara_api",
-                            ))
-                            stats["emails"] += 1
+                        db.add(PoliticianSocialLink(
+                            politician_id=dep.id, platform="email",
+                            url=f"mailto:{email}", username=email,
+                            is_official=True, source_id="camara_api",
+                        ))
+                        stats["emails"] += 1
 
-                    # Phone
-                    telefone = gabinete.get("telefone") if gabinete else None
+                    # Telefone
+                    telefone = gabinete.get("telefone")
                     if telefone:
-                        existing_phone = await db.execute(
-                            select(PoliticianSocialLink).where(
+                        await db.execute(
+                            delete(PoliticianSocialLink).where(
                                 PoliticianSocialLink.politician_id == dep.id,
                                 PoliticianSocialLink.platform == "phone",
                             )
                         )
-                        if not existing_phone.scalar_one_or_none():
-                            db.add(PoliticianSocialLink(
-                                politician_id=dep.id,
-                                platform="phone",
-                                url=f"tel:{telefone}",
-                                username=telefone,
-                                is_official=True,
-                                source_id="camara_api",
-                            ))
-                            stats["phones"] += 1
+                        db.add(PoliticianSocialLink(
+                            politician_id=dep.id, platform="phone",
+                            url=f"tel:{telefone}", username=telefone,
+                            is_official=True, source_id="camara_api",
+                        ))
+                        stats["phones"] += 1
+
+                    # Nome civil
+                    nome_civil = data.get("nomeCivil")
+                    if nome_civil and nome_civil != dep.full_name:
+                        await db.execute(
+                            delete(PoliticianSocialLink).where(
+                                PoliticianSocialLink.politician_id == dep.id,
+                                PoliticianSocialLink.platform == "nome_civil",
+                            )
+                        )
+                        db.add(PoliticianSocialLink(
+                            politician_id=dep.id, platform="nome_civil",
+                            url=nome_civil, username=nome_civil,
+                            is_official=True, source_id="camara_api",
+                        ))
 
                 except Exception as e:
                     stats["errors"] += 1
-                    if stats["errors"] <= 3:
+                    if stats["errors"] <= 5:
                         print(f"  Erro {dep.full_name}: {e}")
 
                 if (i + 1) % 10 == 0:
