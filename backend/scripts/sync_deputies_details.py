@@ -88,13 +88,26 @@ async def main():
                     if not data:
                         continue
 
-                    # Update biography fields
-                    updated = False
-
+                    # Nome civil → will be shown in sidebar (not biography)
                     nome_civil = data.get("nomeCivil")
-                    if nome_civil and not dep.biography:
-                        dep.biography = f"Nome civil: {nome_civil}"
-                        updated = True
+                    # We store nomeCivil in birth_place temporarily or as part of the flow
+                    # The frontend already shows full_name; nomeCivil goes to social_links
+                    if nome_civil and nome_civil != dep.full_name:
+                        existing_nc = await db.execute(
+                            select(PoliticianSocialLink).where(
+                                PoliticianSocialLink.politician_id == dep.id,
+                                PoliticianSocialLink.platform == "nome_civil",
+                            )
+                        )
+                        if not existing_nc.scalar_one_or_none():
+                            db.add(PoliticianSocialLink(
+                                politician_id=dep.id,
+                                platform="nome_civil",
+                                url=nome_civil,
+                                username=nome_civil,
+                                is_official=True,
+                                source_id="camara_api",
+                            ))
 
                     escolaridade = data.get("escolaridade")
                     if escolaridade and not dep.education:

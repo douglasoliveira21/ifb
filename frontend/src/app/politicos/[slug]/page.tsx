@@ -27,7 +27,7 @@ interface PoliticianDetail {
   source_url: string | null;
 }
 
-type TabId = "overview" | "propositions" | "votes" | "expenses" | "committees" | "electoral" | "news" | "promises" | "judicial";
+type TabId = "overview" | "propositions" | "votes" | "expenses" | "committees" | "patrimonio" | "electoral" | "news" | "promises" | "judicial";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview", label: "Visão Geral" },
@@ -35,6 +35,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "votes", label: "Votações" },
   { id: "expenses", label: "Gastos" },
   { id: "committees", label: "Comissões" },
+  { id: "patrimonio", label: "Patrimônio" },
   { id: "electoral", label: "Eleições" },
   { id: "news", label: "Notícias" },
   { id: "promises", label: "Promessas" },
@@ -49,6 +50,7 @@ export default function PoliticianProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
+  const [patrimonio, setPatrimonio] = useState<number | null>(null);
 
   useEffect(() => {
     if (!slug) return;
@@ -58,6 +60,17 @@ export default function PoliticianProfilePage() {
       .then(setPolitician)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
+
+    // Fetch patrimônio declarado
+    fetch(`${API_URL}/api/v1/politicians/${slug}/assets`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => {
+        if (d?.data?.length) {
+          const total = d.data.reduce((s: number, i: any) => s + (i.declared_value || 0), 0);
+          setPatrimonio(total);
+        }
+      })
+      .catch(() => {});
   }, [slug]);
 
   if (loading) return <LoadingSkeleton />;
@@ -100,6 +113,11 @@ export default function PoliticianProfilePage() {
                 {politician.is_verified && (
                   <span className="px-3 py-1 text-[11px] font-bold bg-green-900/50 text-green-400 border border-green-700">✓ Verificado</span>
                 )}
+                {patrimonio !== null && patrimonio > 0 && (
+                  <span className="px-3 py-1 text-[11px] font-bold bg-ifb-gray-800 text-ifb-yellow border border-ifb-yellow/40">
+                    Patrimônio: {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(patrimonio)}
+                  </span>
+                )}
               </div>
               {politician.source_url && (
                 <p className="text-[11px] text-ifb-gray-500 mt-2">Fonte: <a href={politician.source_url} target="_blank" rel="noopener noreferrer" className="text-ifb-yellow hover:underline">Dados oficiais ↗</a></p>
@@ -133,6 +151,7 @@ export default function PoliticianProfilePage() {
         {activeTab === "votes" && <VotesTab slug={slug} />}
         {activeTab === "expenses" && <ExpensesTab slug={slug} />}
         {activeTab === "committees" && <CommitteesTab slug={slug} />}
+        {activeTab === "patrimonio" && <PatrimonioTab slug={slug} />}
         {activeTab === "electoral" && <DataTab slug={slug} endpoint="candidacies" title="Histórico Eleitoral" />}
         {activeTab === "news" && <DataTab slug={slug} endpoint="news" title="Notícias" />}
         {activeTab === "promises" && <PromisesTab slug={slug} />}
@@ -146,7 +165,13 @@ export default function PoliticianProfilePage() {
 function OverviewTab({ politician }: { politician: PoliticianDetail }) {
   const email = politician.social_links.find(s => s.platform === "email");
   const phone = politician.social_links.find(s => s.platform === "phone");
-  const otherLinks = politician.social_links.filter(s => s.platform !== "email" && s.platform !== "phone");
+  const nomeCivil = politician.social_links.find(s => s.platform === "nome_civil");
+  const otherLinks = politician.social_links.filter(s => !["email", "phone", "nome_civil"].includes(s.platform));
+
+  // Biografia: se começa com "Nome civil:" é o fallback antigo, mostrar como indisponível
+  const biographyText = politician.biography && !politician.biography.startsWith("Nome civil:")
+    ? politician.biography
+    : null;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -155,7 +180,7 @@ function OverviewTab({ politician }: { politician: PoliticianDetail }) {
         <section className="border border-ifb-gray-800 bg-ifb-black-soft p-6">
           <h2 className="text-[14px] font-bold uppercase tracking-wide text-ifb-yellow mb-3">Biografia</h2>
           <p className="text-[13px] text-ifb-gray-300 leading-relaxed">
-            {politician.biography || "Informação ainda não disponível para este político."}
+            {biographyText || "Biografia ainda não disponível para este político. Os dados pessoais estão na seção ao lado."}
           </p>
         </section>
 
@@ -212,6 +237,7 @@ function OverviewTab({ politician }: { politician: PoliticianDetail }) {
         <section className="border border-ifb-gray-800 bg-ifb-black-soft p-6">
           <h3 className="text-[12px] font-bold uppercase tracking-wider text-ifb-gray-400 mb-4">Dados Pessoais</h3>
           <dl className="space-y-3">
+            {nomeCivil && <InfoRow label="Nome Civil" value={nomeCivil.username} />}
             <InfoRow label="Cargo" value={politician.current_position_name} />
             <InfoRow label="Partido" value={politician.current_party ? `${politician.current_party.name} (${politician.current_party.acronym})` : null} />
             <InfoRow label="Estado" value={politician.state_code} />
@@ -245,6 +271,67 @@ function InfoRow({ label, value }: { label: string; value: string | null | undef
     <div>
       <dt className="text-[11px] text-ifb-gray-500 uppercase">{label}</dt>
       <dd className="text-[13px] text-ifb-white font-medium">{value || "—"}</dd>
+    </div>
+  );
+}
+
+/* ===== PATRIMÔNIO TAB ===== */
+function PatrimonioTab({ slug }: { slug: string }) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`${API_URL}/api/v1/politicians/${slug}/assets`)
+      .then((r) => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); })
+      .then(setData).catch((e) => setError(e.message)).finally(() => setLoading(false));
+  }, [slug]);
+
+  if (loading) return <TabSkeleton title="Declaração de Bens" />;
+  if (error) return <TabError title="Declaração de Bens" error={error} />;
+
+  const items = data?.data || [];
+  const totalValue = items.reduce((sum: number, item: any) => sum + (item.declared_value || 0), 0);
+
+  return (
+    <div className="border border-ifb-gray-800 bg-ifb-black-soft p-6">
+      <h2 className="text-[14px] font-bold uppercase tracking-wide text-ifb-yellow mb-2">Declaração de Bens</h2>
+      <div className="mb-4 p-3 border border-ifb-yellow/30 bg-ifb-yellow/5">
+        <p className="text-[11px] text-ifb-gray-300">Valores declarados à Justiça Eleitoral na última eleição em que concorreu. Não representam necessariamente o patrimônio atual.</p>
+      </div>
+
+      {items.length === 0 ? <EmptyMsg msg="Nenhuma declaração de bens importada do TSE para este político." /> : (
+        <>
+          {/* Total */}
+          <div className="mb-5">
+            <p className="text-[28px] font-bold text-ifb-yellow">{formatCurrency(totalValue)}</p>
+            <p className="text-[10px] text-ifb-gray-500 uppercase">Patrimônio total declarado</p>
+          </div>
+
+          {/* Items */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px]">
+              <thead><tr className="border-b border-ifb-gray-700">
+                <th className="text-left py-2 px-3 text-[10px] font-bold text-ifb-gray-500 uppercase">Ano</th>
+                <th className="text-left py-2 px-3 text-[10px] font-bold text-ifb-gray-500 uppercase">Categoria</th>
+                <th className="text-left py-2 px-3 text-[10px] font-bold text-ifb-gray-500 uppercase">Descrição</th>
+                <th className="text-right py-2 px-3 text-[10px] font-bold text-ifb-gray-500 uppercase">Valor</th>
+              </tr></thead>
+              <tbody>
+                {items.map((item: any, i: number) => (
+                  <tr key={i} className="border-b border-ifb-gray-800 hover:bg-ifb-yellow/5 transition">
+                    <td className="py-2.5 px-3 text-ifb-gray-400">{item.election_year || "—"}</td>
+                    <td className="py-2.5 px-3 text-ifb-gray-300">{item.category || "—"}</td>
+                    <td className="py-2.5 px-3 text-ifb-gray-400">{(item.description || "—").slice(0, 50)}</td>
+                    <td className="py-2.5 px-3 text-right font-medium text-ifb-yellow">{formatCurrency(item.declared_value)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
 }
