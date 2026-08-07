@@ -8,7 +8,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test:e2e": "npx playwright test",
+    "test:e2e:public": "npx playwright test public-pages internal-links responsive news-detail contact",
+    "test:e2e:admin": "npx playwright test admin-access admin-news rbac"
   },
   "dependencies": {
     "next": "^14.2.0",
