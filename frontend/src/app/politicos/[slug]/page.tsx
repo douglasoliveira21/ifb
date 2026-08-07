@@ -129,14 +129,14 @@ export default function PoliticianProfilePage() {
       {/* ===== TAB CONTENT ===== */}
       <div className="max-w-ifb mx-auto px-6 lg:px-10 py-6">
         {activeTab === "overview" && <OverviewTab politician={politician} />}
-        {activeTab === "propositions" && <DataTab slug={slug} endpoint="propositions" title="Projetos de Lei" />}
+        {activeTab === "propositions" && <PropositionsTab slug={slug} />}
         {activeTab === "votes" && <VotesTab slug={slug} />}
-        {activeTab === "expenses" && <DataTab slug={slug} endpoint="parliamentary-expenses" title="Gastos Parlamentares" />}
-        {activeTab === "committees" && <DataTab slug={slug} endpoint="committees" title="Comissões" />}
+        {activeTab === "expenses" && <ExpensesTab slug={slug} />}
+        {activeTab === "committees" && <CommitteesTab slug={slug} />}
         {activeTab === "electoral" && <DataTab slug={slug} endpoint="candidacies" title="Histórico Eleitoral" />}
         {activeTab === "news" && <DataTab slug={slug} endpoint="news" title="Notícias" />}
-        {activeTab === "promises" && <DataTab slug={slug} endpoint="promises" title="Promessas de Campanha" />}
-        {activeTab === "judicial" && <DataTab slug={slug} endpoint="judicial-cases" title="Processos Judiciais" disclaimer="A existência de processo não implica culpa." />}
+        {activeTab === "promises" && <PromisesTab slug={slug} />}
+        {activeTab === "judicial" && <JudicialTab slug={slug} />}
       </div>
     </main>
   );
@@ -220,6 +220,398 @@ function InfoRow({ label, value }: { label: string; value: string | null | undef
       <dd className="text-[13px] text-ifb-white font-medium">{value || "—"}</dd>
     </div>
   );
+}
+
+/* ===== PROPOSITIONS TAB ===== */
+function PropositionsTab({ slug }: { slug: string }) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [yearFilter, setYearFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (yearFilter) params.set("year", yearFilter);
+    if (typeFilter) params.set("type", typeFilter);
+    params.set("limit", "100");
+    fetch(`${API_URL}/api/v1/politicians/${slug}/propositions?${params}`)
+      .then((r) => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); })
+      .then(setData).catch((e) => setError(e.message)).finally(() => setLoading(false));
+  }, [slug, yearFilter, typeFilter]);
+
+  if (loading) return <TabSkeleton title="Projetos de Lei" />;
+  if (error) return <TabError title="Projetos de Lei" error={error} />;
+
+  const items = data?.data || [];
+  const filtered = items.filter((p: any) => {
+    if (!search) return true;
+    const text = `${p.title || ""} ${p.summary || ""} ${p.type_acronym || ""} ${p.number || ""}`.toLowerCase();
+    return text.includes(search.toLowerCase());
+  });
+
+  // Types count
+  const types: Record<string, number> = {};
+  items.forEach((p: any) => { const t = p.type || p.type_acronym || "Outro"; types[t] = (types[t] || 0) + 1; });
+
+  return (
+    <div className="border border-ifb-gray-800 bg-ifb-black-soft p-6">
+      <h2 className="text-[14px] font-bold uppercase tracking-wide text-ifb-yellow mb-4">Projetos de Lei</h2>
+
+      {items.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {Object.entries(types).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([t, count]) => (
+            <button key={t} onClick={() => setTypeFilter(typeFilter === t ? "" : t)} className={`px-3 py-1 text-[11px] font-medium border transition ${typeFilter === t ? "border-ifb-yellow bg-ifb-yellow/10 text-ifb-yellow" : "border-ifb-gray-700 text-ifb-gray-400 hover:border-ifb-gray-500"}`}>
+              {t} ({count})
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-3 mb-4">
+        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por ementa..." className="flex-1 min-w-[200px] h-[38px] px-3 bg-ifb-black border border-ifb-gray-700 text-[12px] text-ifb-white placeholder:text-ifb-gray-600 outline-none focus:border-ifb-yellow transition" />
+        <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)} className="h-[38px] px-3 bg-ifb-black border border-ifb-gray-700 text-[12px] text-ifb-gray-300 outline-none focus:border-ifb-yellow">
+          <option value="">Todos os anos</option>
+          {[2026,2025,2024,2023].map(y => <option key={y} value={String(y)}>{y}</option>)}
+        </select>
+        {(search || yearFilter || typeFilter) && <button onClick={() => { setSearch(""); setYearFilter(""); setTypeFilter(""); }} className="h-[38px] px-3 text-[11px] text-ifb-gray-400 hover:text-ifb-yellow">Limpar</button>}
+      </div>
+
+      <p className="text-[11px] text-ifb-gray-500 mb-3">{filtered.length} projeto(s)</p>
+
+      {filtered.length === 0 ? <EmptyMsg msg="Nenhum projeto encontrado." /> : (
+        <div className="space-y-2">
+          {filtered.slice(0, 50).map((p: any, i: number) => (
+            <div key={i} className="border-b border-ifb-gray-800 pb-3 last:border-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="px-2 py-0.5 text-[10px] font-bold bg-ifb-yellow text-ifb-black">{p.type || p.type_acronym || "—"}</span>
+                {p.number && <span className="text-[11px] text-ifb-gray-400">Nº {p.number}/{p.year || ""}</span>}
+                {p.presentation_date && <span className="text-[10px] text-ifb-gray-500">{new Date(p.presentation_date).toLocaleDateString("pt-BR")}</span>}
+              </div>
+              <p className="text-[13px] text-ifb-gray-200 leading-snug">{p.title || p.summary || "Sem ementa disponível"}</p>
+              {p.status && <p className="text-[11px] text-ifb-gray-500 mt-1">Status: {p.status}</p>}
+            </div>
+          ))}
+          {filtered.length > 50 && <p className="text-[11px] text-ifb-gray-600 text-center mt-2">Mostrando 50 de {filtered.length}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ===== EXPENSES TAB ===== */
+function ExpensesTab({ slug }: { slug: string }) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [yearFilter, setYearFilter] = useState("2026");
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (yearFilter) params.set("year", yearFilter);
+    params.set("limit", "100");
+    fetch(`${API_URL}/api/v1/politicians/${slug}/parliamentary-expenses?${params}`)
+      .then((r) => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); })
+      .then(setData).catch((e) => setError(e.message)).finally(() => setLoading(false));
+  }, [slug, yearFilter]);
+
+  if (loading) return <TabSkeleton title="Gastos Parlamentares" />;
+  if (error) return <TabError title="Gastos Parlamentares" error={error} />;
+
+  const items = data?.data || [];
+  const totalNet = data?.aggregates?.total_net_amount || 0;
+  const filtered = items.filter((e: any) => {
+    if (!search) return true;
+    return `${e.category || ""} ${e.supplier_name || ""}`.toLowerCase().includes(search.toLowerCase());
+  });
+
+  // Category totals
+  const categories: Record<string, number> = {};
+  items.forEach((e: any) => { const c = e.category || "Outros"; categories[c] = (categories[c] || 0) + (e.net_amount || 0); });
+  const topCats = Object.entries(categories).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  return (
+    <div className="border border-ifb-gray-800 bg-ifb-black-soft p-6">
+      <h2 className="text-[14px] font-bold uppercase tracking-wide text-ifb-yellow mb-4">Gastos Parlamentares</h2>
+
+      {/* Total */}
+      <div className="flex items-center gap-6 mb-5">
+        <div>
+          <p className="text-[24px] font-bold text-ifb-yellow">{formatCurrency(totalNet)}</p>
+          <p className="text-[10px] text-ifb-gray-500 uppercase">Total líquido {yearFilter || ""}</p>
+        </div>
+        <div>
+          <p className="text-[18px] font-bold text-ifb-white">{items.length}</p>
+          <p className="text-[10px] text-ifb-gray-500 uppercase">Despesas</p>
+        </div>
+      </div>
+
+      {/* Top categories */}
+      {topCats.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
+          {topCats.map(([cat, total]) => (
+            <div key={cat} className="border border-ifb-gray-700 p-2 text-center">
+              <p className="text-[12px] font-bold text-ifb-gray-200 truncate">{cat.slice(0, 20)}</p>
+              <p className="text-[11px] text-ifb-yellow">{formatCurrency(total)}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 mb-4">
+        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por categoria ou fornecedor..." className="flex-1 min-w-[200px] h-[38px] px-3 bg-ifb-black border border-ifb-gray-700 text-[12px] text-ifb-white placeholder:text-ifb-gray-600 outline-none focus:border-ifb-yellow transition" />
+        <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)} className="h-[38px] px-3 bg-ifb-black border border-ifb-gray-700 text-[12px] text-ifb-gray-300 outline-none focus:border-ifb-yellow">
+          <option value="">Todos</option>
+          {[2026,2025,2024,2023].map(y => <option key={y} value={String(y)}>{y}</option>)}
+        </select>
+      </div>
+
+      {filtered.length === 0 ? <EmptyMsg msg="Nenhuma despesa encontrada para os filtros selecionados." /> : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12px]">
+            <thead><tr className="border-b border-ifb-gray-700">
+              <th className="text-left py-2 px-3 text-[10px] font-bold text-ifb-gray-500 uppercase">Mês</th>
+              <th className="text-left py-2 px-3 text-[10px] font-bold text-ifb-gray-500 uppercase">Categoria</th>
+              <th className="text-left py-2 px-3 text-[10px] font-bold text-ifb-gray-500 uppercase hidden sm:table-cell">Fornecedor</th>
+              <th className="text-right py-2 px-3 text-[10px] font-bold text-ifb-gray-500 uppercase">Valor</th>
+            </tr></thead>
+            <tbody>
+              {filtered.slice(0, 50).map((e: any, i: number) => (
+                <tr key={i} className="border-b border-ifb-gray-800 hover:bg-ifb-yellow/5 transition">
+                  <td className="py-2.5 px-3 text-ifb-gray-400">{e.month || "—"}/{e.year || ""}</td>
+                  <td className="py-2.5 px-3 text-ifb-gray-300">{(e.category || "—").slice(0, 30)}</td>
+                  <td className="py-2.5 px-3 text-ifb-gray-400 hidden sm:table-cell">{(e.supplier_name || "—").slice(0, 25)}</td>
+                  <td className="py-2.5 px-3 text-right font-medium text-ifb-yellow">{formatCurrency(e.net_amount || e.gross_amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filtered.length > 50 && <p className="text-[11px] text-ifb-gray-600 text-center mt-2">Mostrando 50 de {filtered.length}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ===== COMMITTEES TAB ===== */
+function CommitteesTab({ slug }: { slug: string }) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`${API_URL}/api/v1/politicians/${slug}/committees`)
+      .then((r) => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); })
+      .then(setData).catch((e) => setError(e.message)).finally(() => setLoading(false));
+  }, [slug]);
+
+  if (loading) return <TabSkeleton title="Comissões" />;
+  if (error) return <TabError title="Comissões" error={error} />;
+
+  const items = data?.data || [];
+  const filtered = items.filter((c: any) => {
+    if (!search) return true;
+    return `${c.committee_name || ""} ${c.acronym || ""} ${c.role || ""}`.toLowerCase().includes(search.toLowerCase());
+  });
+
+  // Roles count
+  const roles: Record<string, number> = {};
+  items.forEach((c: any) => { const r = c.role || "Membro"; roles[r] = (roles[r] || 0) + 1; });
+
+  return (
+    <div className="border border-ifb-gray-800 bg-ifb-black-soft p-6">
+      <h2 className="text-[14px] font-bold uppercase tracking-wide text-ifb-yellow mb-4">Comissões</h2>
+
+      {items.length > 0 && (
+        <div className="flex items-center gap-4 mb-4">
+          <div><p className="text-[20px] font-bold text-ifb-yellow">{items.length}</p><p className="text-[10px] text-ifb-gray-500 uppercase">Total</p></div>
+          {Object.entries(roles).map(([role, count]) => (
+            <div key={role}><p className="text-[16px] font-bold text-ifb-gray-300">{count}</p><p className="text-[10px] text-ifb-gray-500 uppercase">{role}</p></div>
+          ))}
+        </div>
+      )}
+
+      <div className="mb-4">
+        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar comissão..." className="w-full max-w-[400px] h-[38px] px-3 bg-ifb-black border border-ifb-gray-700 text-[12px] text-ifb-white placeholder:text-ifb-gray-600 outline-none focus:border-ifb-yellow transition" />
+      </div>
+
+      {filtered.length === 0 ? <EmptyMsg msg="Nenhuma comissão encontrada." /> : (
+        <div className="space-y-2">
+          {filtered.map((c: any, i: number) => (
+            <div key={i} className="flex items-center justify-between py-3 border-b border-ifb-gray-800 last:border-0">
+              <div>
+                <p className="text-[13px] text-ifb-gray-200 font-medium">{c.committee_name || "—"}</p>
+                {c.acronym && <p className="text-[11px] text-ifb-gray-500">{c.acronym}</p>}
+              </div>
+              <span className="px-3 py-1 text-[10px] font-bold bg-ifb-gray-800 text-ifb-gray-300 border border-ifb-gray-700">{c.role || "Membro"}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ===== PROMISES TAB ===== */
+function PromisesTab({ slug }: { slug: string }) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`${API_URL}/api/v1/politicians/${slug}/promises`)
+      .then((r) => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); })
+      .then(setData).catch((e) => setError(e.message)).finally(() => setLoading(false));
+  }, [slug]);
+
+  if (loading) return <TabSkeleton title="Promessas de Campanha" />;
+  if (error) return <TabError title="Promessas de Campanha" error={error} />;
+
+  const items = data?.data || data?.items || [];
+  const filtered = items.filter((p: any) => {
+    if (statusFilter && p.status !== statusFilter) return false;
+    if (search && !(p.title || "").toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  const STATUS_LABELS: Record<string, string> = { fulfilled: "Cumprida", not_fulfilled: "Não cumprida", in_progress: "Em andamento", partially_fulfilled: "Parcialmente", unverifiable: "Não verificável" };
+  const STATUS_COLORS: Record<string, string> = { fulfilled: "text-green-400", not_fulfilled: "text-red-400", in_progress: "text-ifb-yellow", partially_fulfilled: "text-orange-400", unverifiable: "text-ifb-gray-500" };
+
+  // Count by status
+  const statusCounts: Record<string, number> = {};
+  items.forEach((p: any) => { const s = p.status || "unknown"; statusCounts[s] = (statusCounts[s] || 0) + 1; });
+
+  return (
+    <div className="border border-ifb-gray-800 bg-ifb-black-soft p-6">
+      <h2 className="text-[14px] font-bold uppercase tracking-wide text-ifb-yellow mb-4">Promessas de Campanha</h2>
+
+      {items.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-5">
+          {Object.entries(statusCounts).map(([s, count]) => (
+            <button key={s} onClick={() => setStatusFilter(statusFilter === s ? "" : s)} className={`px-3 py-1.5 text-[11px] font-medium border transition ${statusFilter === s ? "border-ifb-yellow bg-ifb-yellow/10 text-ifb-yellow" : "border-ifb-gray-700 text-ifb-gray-400 hover:border-ifb-gray-500"}`}>
+              {STATUS_LABELS[s] || s} ({count})
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-3 mb-4">
+        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar promessa..." className="flex-1 min-w-[200px] h-[38px] px-3 bg-ifb-black border border-ifb-gray-700 text-[12px] text-ifb-white placeholder:text-ifb-gray-600 outline-none focus:border-ifb-yellow transition" />
+        {(search || statusFilter) && <button onClick={() => { setSearch(""); setStatusFilter(""); }} className="h-[38px] px-3 text-[11px] text-ifb-gray-400 hover:text-ifb-yellow">Limpar</button>}
+      </div>
+
+      {filtered.length === 0 ? <EmptyMsg msg="Nenhuma promessa registrada ou encontrada com os filtros." /> : (
+        <div className="space-y-3">
+          {filtered.slice(0, 30).map((p: any, i: number) => (
+            <div key={i} className="border-b border-ifb-gray-800 pb-3 last:border-0">
+              <div className="flex items-center justify-between mb-1">
+                <span className={`text-[12px] font-bold ${STATUS_COLORS[p.status] || "text-ifb-gray-400"}`}>{STATUS_LABELS[p.status] || p.status || "—"}</span>
+                {p.progress_percentage != null && <span className="text-[11px] text-ifb-gray-400">{p.progress_percentage}%</span>}
+              </div>
+              <p className="text-[13px] text-ifb-gray-200 leading-snug">{p.title || "Sem título"}</p>
+              {p.category && <p className="text-[11px] text-ifb-gray-500 mt-1">Categoria: {p.category}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ===== JUDICIAL TAB ===== */
+function JudicialTab({ slug }: { slug: string }) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`${API_URL}/api/v1/politicians/${slug}/judicial-cases`)
+      .then((r) => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); })
+      .then(setData).catch((e) => setError(e.message)).finally(() => setLoading(false));
+  }, [slug]);
+
+  if (loading) return <TabSkeleton title="Processos Judiciais" />;
+  if (error) return <TabError title="Processos Judiciais" error={error} />;
+
+  const items = data?.data || [];
+  const filtered = items.filter((c: any) => {
+    if (statusFilter && (c.normalized_status || c.procedural_status) !== statusFilter) return false;
+    if (search && !`${c.tribunal || ""} ${c.case_class || ""} ${c.procedural_status || ""}`.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  return (
+    <div className="border border-ifb-gray-800 bg-ifb-black-soft p-6">
+      <h2 className="text-[14px] font-bold uppercase tracking-wide text-ifb-yellow mb-2">Processos Judiciais</h2>
+      <div className="mb-4 p-3 border border-ifb-yellow/30 bg-ifb-yellow/5">
+        <p className="text-[11px] text-ifb-gray-300">A existência de processo judicial não implica culpa. Investigação não é condenação. Processos podem estar em recurso ou ter sido arquivados.</p>
+      </div>
+
+      <div className="flex flex-wrap gap-3 mb-4">
+        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por tribunal, classe, status..." className="flex-1 min-w-[200px] h-[38px] px-3 bg-ifb-black border border-ifb-gray-700 text-[12px] text-ifb-white placeholder:text-ifb-gray-600 outline-none focus:border-ifb-yellow transition" />
+        {(search || statusFilter) && <button onClick={() => { setSearch(""); setStatusFilter(""); }} className="h-[38px] px-3 text-[11px] text-ifb-gray-400 hover:text-ifb-yellow">Limpar</button>}
+      </div>
+
+      {filtered.length === 0 ? <EmptyMsg msg="Nenhum processo confirmado e publicado disponível." /> : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12px]">
+            <thead><tr className="border-b border-ifb-gray-700">
+              <th className="text-left py-2 px-3 text-[10px] font-bold text-ifb-gray-500 uppercase">Tribunal</th>
+              <th className="text-left py-2 px-3 text-[10px] font-bold text-ifb-gray-500 uppercase">Classe</th>
+              <th className="text-left py-2 px-3 text-[10px] font-bold text-ifb-gray-500 uppercase">Papel</th>
+              <th className="text-left py-2 px-3 text-[10px] font-bold text-ifb-gray-500 uppercase">Status</th>
+            </tr></thead>
+            <tbody>
+              {filtered.slice(0, 30).map((c: any, i: number) => (
+                <tr key={i} className="border-b border-ifb-gray-800 hover:bg-ifb-yellow/5 transition">
+                  <td className="py-2.5 px-3 text-ifb-gray-300">{c.tribunal || "—"}</td>
+                  <td className="py-2.5 px-3 text-ifb-gray-300">{c.case_class || "—"}</td>
+                  <td className="py-2.5 px-3 text-ifb-gray-400">{c.politician_role || "—"}</td>
+                  <td className="py-2.5 px-3 text-ifb-gray-400">{c.procedural_status || c.normalized_status || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ===== SHARED TAB HELPERS ===== */
+function TabSkeleton({ title }: { title: string }) {
+  return (
+    <div className="border border-ifb-gray-800 bg-ifb-black-soft p-6 animate-pulse">
+      <div className="h-4 bg-ifb-gray-800 w-1/3 mb-4" />
+      <div className="space-y-3">{[1,2,3,4].map(i => <div key={i} className="h-10 bg-ifb-gray-800" />)}</div>
+    </div>
+  );
+}
+
+function TabError({ title, error }: { title: string; error: string }) {
+  return (
+    <div className="border border-ifb-gray-800 bg-ifb-black-soft p-6">
+      <h2 className="text-[14px] font-bold uppercase tracking-wide text-ifb-yellow mb-2">{title}</h2>
+      <p className="text-[13px] text-red-400">Erro ao carregar dados ({error})</p>
+    </div>
+  );
+}
+
+function EmptyMsg({ msg }: { msg: string }) {
+  return <div className="text-center py-8"><p className="text-[13px] text-ifb-gray-500">{msg}</p></div>;
 }
 
 /* ===== VOTES TAB (dedicated with filters) ===== */
