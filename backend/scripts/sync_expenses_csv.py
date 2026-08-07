@@ -34,7 +34,7 @@ settings = get_settings()
 CAMARA_API = "https://dadosabertos.camara.leg.br/api/v2"
 
 YEAR = int(sys.argv[1]) if len(sys.argv) > 1 else 2025
-CSV_URL = f"https://dadosabertos.camara.leg.br/arquivos/despesas/csv/Ano-{YEAR}.csv"
+CSV_URL = f"https://www.camara.leg.br/cotas/Ano-{YEAR}.csv.zip"
 
 
 async def main():
@@ -43,17 +43,26 @@ async def main():
     print(f"  Fonte: {CSV_URL}")
     print(f"{'=' * 60}\n")
 
-    # Download CSV
-    print("  Baixando CSV...")
+    # Download CSV (ZIP)
+    print("  Baixando ZIP...")
     async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
         resp = await client.get(CSV_URL)
         if resp.status_code != 200:
-            print(f"  Erro ao baixar CSV: {resp.status_code}")
+            print(f"  Erro ao baixar: {resp.status_code}")
             print(f"  URL: {CSV_URL}")
             return
-        csv_text = resp.text
+        zip_data = resp.content
 
-    print(f"  CSV baixado: {len(csv_text)} bytes")
+    print(f"  ZIP baixado: {len(zip_data)} bytes")
+
+    # Extract CSV from ZIP
+    import zipfile
+    with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
+        csv_filename = [n for n in zf.namelist() if n.endswith(".csv")][0]
+        print(f"  Extraindo: {csv_filename}")
+        csv_text = zf.read(csv_filename).decode("utf-8", errors="replace")
+
+    print(f"  CSV extraído: {len(csv_text)} caracteres")
 
     # Parse CSV
     reader = csv.DictReader(io.StringIO(csv_text), delimiter=";")
