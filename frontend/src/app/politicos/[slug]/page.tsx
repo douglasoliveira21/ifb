@@ -144,6 +144,10 @@ export default function PoliticianProfilePage() {
 
 /* ===== OVERVIEW ===== */
 function OverviewTab({ politician }: { politician: PoliticianDetail }) {
+  const email = politician.social_links.find(s => s.platform === "email");
+  const phone = politician.social_links.find(s => s.platform === "phone");
+  const otherLinks = politician.social_links.filter(s => s.platform !== "email" && s.platform !== "phone");
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
       <div className="lg:col-span-2 space-y-5">
@@ -154,6 +158,27 @@ function OverviewTab({ politician }: { politician: PoliticianDetail }) {
             {politician.biography || "Informação ainda não disponível para este político."}
           </p>
         </section>
+
+        {/* Contato */}
+        {(email || phone) && (
+          <section className="border border-ifb-gray-800 bg-ifb-black-soft p-6">
+            <h2 className="text-[14px] font-bold uppercase tracking-wide text-ifb-yellow mb-3">Contato</h2>
+            <div className="space-y-2">
+              {email && (
+                <div className="flex items-center gap-3">
+                  <svg className="w-4 h-4 text-ifb-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                  <a href={email.url} className="text-[13px] text-ifb-gray-200 hover:text-ifb-yellow transition">{email.username || email.url.replace("mailto:", "")}</a>
+                </div>
+              )}
+              {phone && (
+                <div className="flex items-center gap-3">
+                  <svg className="w-4 h-4 text-ifb-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                  <a href={phone.url} className="text-[13px] text-ifb-gray-200 hover:text-ifb-yellow transition">{phone.username || phone.url.replace("tel:", "")}</a>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
 
         {/* Aliases */}
         {politician.aliases.length > 0 && (
@@ -167,12 +192,12 @@ function OverviewTab({ politician }: { politician: PoliticianDetail }) {
           </section>
         )}
 
-        {/* Social links */}
-        {politician.social_links.length > 0 && (
+        {/* Redes Sociais */}
+        {otherLinks.length > 0 && (
           <section className="border border-ifb-gray-800 bg-ifb-black-soft p-6">
             <h2 className="text-[14px] font-bold uppercase tracking-wide text-ifb-yellow mb-3">Redes Sociais</h2>
             <div className="flex flex-wrap gap-3">
-              {politician.social_links.map((s, i) => (
+              {otherLinks.map((s, i) => (
                 <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" className="text-[12px] text-ifb-gray-400 hover:text-ifb-yellow transition border border-ifb-gray-700 px-3 py-1.5">
                   {s.platform} ↗
                 </a>
@@ -185,19 +210,21 @@ function OverviewTab({ politician }: { politician: PoliticianDetail }) {
       {/* Sidebar */}
       <div className="space-y-5">
         <section className="border border-ifb-gray-800 bg-ifb-black-soft p-6">
-          <h3 className="text-[12px] font-bold uppercase tracking-wider text-ifb-gray-400 mb-4">Dados</h3>
+          <h3 className="text-[12px] font-bold uppercase tracking-wider text-ifb-gray-400 mb-4">Dados Pessoais</h3>
           <dl className="space-y-3">
             <InfoRow label="Cargo" value={politician.current_position_name} />
             <InfoRow label="Partido" value={politician.current_party ? `${politician.current_party.name} (${politician.current_party.acronym})` : null} />
             <InfoRow label="Estado" value={politician.state_code} />
             <InfoRow label="Município" value={politician.city_name} />
-            <InfoRow label="Nascimento" value={politician.birth_date} />
+            <InfoRow label="Nascimento" value={politician.birth_date ? new Date(politician.birth_date + "T00:00:00").toLocaleDateString("pt-BR") : null} />
             {politician.website_url && (
               <div>
                 <dt className="text-[11px] text-ifb-gray-500 uppercase">Site</dt>
                 <dd><a href={politician.website_url} target="_blank" rel="noopener noreferrer" className="text-[12px] text-ifb-yellow hover:underline break-all">{politician.website_url}</a></dd>
               </div>
             )}
+            {email && <InfoRow label="E-mail" value={email.username || email.url.replace("mailto:", "")} />}
+            {phone && <InfoRow label="Telefone" value={phone.username || phone.url.replace("tel:", "")} />}
           </dl>
         </section>
 
@@ -313,7 +340,7 @@ function ExpensesTab({ slug }: { slug: string }) {
     setLoading(true);
     const params = new URLSearchParams();
     if (yearFilter) params.set("year", yearFilter);
-    params.set("limit", "100");
+    params.set("limit", "200");
     fetch(`${API_URL}/api/v1/politicians/${slug}/parliamentary-expenses?${params}`)
       .then((r) => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); })
       .then(setData).catch((e) => setError(e.message)).finally(() => setLoading(false));
@@ -329,16 +356,27 @@ function ExpensesTab({ slug }: { slug: string }) {
     return `${e.category || ""} ${e.supplier_name || ""}`.toLowerCase().includes(search.toLowerCase());
   });
 
-  // Category totals
+  // Category totals for chart
   const categories: Record<string, number> = {};
-  items.forEach((e: any) => { const c = e.category || "Outros"; categories[c] = (categories[c] || 0) + (e.net_amount || 0); });
-  const topCats = Object.entries(categories).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  items.forEach((e: any) => { const c = (e.category || "Outros").slice(0, 30); categories[c] = (categories[c] || 0) + (e.net_amount || 0); });
+  const topCats = Object.entries(categories).sort((a, b) => b[1] - a[1]).slice(0, 6);
+
+  // Monthly totals for chart
+  const monthly: Record<string, number> = {};
+  items.forEach((e: any) => {
+    const key = `${e.month || 0}`.padStart(2, "0");
+    monthly[key] = (monthly[key] || 0) + (e.net_amount || 0);
+  });
+  const monthlyData = Object.entries(monthly).sort((a, b) => a[0].localeCompare(b[0])).map(([m, v]) => ({
+    month: ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"][parseInt(m) - 1] || m,
+    valor: v,
+  }));
 
   return (
     <div className="border border-ifb-gray-800 bg-ifb-black-soft p-6">
       <h2 className="text-[14px] font-bold uppercase tracking-wide text-ifb-yellow mb-4">Gastos Parlamentares</h2>
 
-      {/* Total */}
+      {/* Summary */}
       <div className="flex items-center gap-6 mb-5">
         <div>
           <p className="text-[24px] font-bold text-ifb-yellow">{formatCurrency(totalNet)}</p>
@@ -350,15 +388,53 @@ function ExpensesTab({ slug }: { slug: string }) {
         </div>
       </div>
 
-      {/* Top categories */}
-      {topCats.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
-          {topCats.map(([cat, total]) => (
-            <div key={cat} className="border border-ifb-gray-700 p-2 text-center">
-              <p className="text-[12px] font-bold text-ifb-gray-200 truncate">{cat.slice(0, 20)}</p>
-              <p className="text-[11px] text-ifb-yellow">{formatCurrency(total)}</p>
+      {/* Charts */}
+      {items.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+          {/* Monthly bar chart */}
+          {monthlyData.length > 1 && (
+            <div className="border border-ifb-gray-700 p-4">
+              <h3 className="text-[11px] font-bold uppercase text-ifb-gray-400 mb-3">Gastos por Mês</h3>
+              <div className="flex items-end gap-1 h-[120px]">
+                {monthlyData.map((d, i) => {
+                  const maxVal = Math.max(...monthlyData.map(x => x.valor));
+                  const height = maxVal > 0 ? (d.valor / maxVal) * 100 : 0;
+                  return (
+                    <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                      <div className="w-full bg-ifb-yellow/80 hover:bg-ifb-yellow transition relative group" style={{ height: `${Math.max(height, 4)}%` }}>
+                        <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[9px] text-ifb-gray-400 opacity-0 group-hover:opacity-100 whitespace-nowrap transition">
+                          {formatCurrency(d.valor)}
+                        </div>
+                      </div>
+                      <span className="text-[9px] text-ifb-gray-500">{d.month}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          ))}
+          )}
+
+          {/* Category breakdown */}
+          <div className="border border-ifb-gray-700 p-4">
+            <h3 className="text-[11px] font-bold uppercase text-ifb-gray-400 mb-3">Top Categorias</h3>
+            <div className="space-y-2">
+              {topCats.map(([cat, total], i) => {
+                const maxCat = topCats[0][1];
+                const pct = maxCat > 0 ? (total / maxCat) * 100 : 0;
+                return (
+                  <div key={i}>
+                    <div className="flex justify-between text-[11px] mb-0.5">
+                      <span className="text-ifb-gray-300 truncate max-w-[200px]">{cat}</span>
+                      <span className="text-ifb-yellow font-medium">{formatCurrency(total)}</span>
+                    </div>
+                    <div className="h-[6px] bg-ifb-gray-800 w-full">
+                      <div className="h-full bg-ifb-yellow transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 
@@ -384,7 +460,7 @@ function ExpensesTab({ slug }: { slug: string }) {
               {filtered.slice(0, 50).map((e: any, i: number) => (
                 <tr key={i} className="border-b border-ifb-gray-800 hover:bg-ifb-yellow/5 transition">
                   <td className="py-2.5 px-3 text-ifb-gray-400">{e.month || "—"}/{e.year || ""}</td>
-                  <td className="py-2.5 px-3 text-ifb-gray-300">{(e.category || "—").slice(0, 30)}</td>
+                  <td className="py-2.5 px-3 text-ifb-gray-300">{(e.category || "—").slice(0, 35)}</td>
                   <td className="py-2.5 px-3 text-ifb-gray-400 hidden sm:table-cell">{(e.supplier_name || "—").slice(0, 25)}</td>
                   <td className="py-2.5 px-3 text-right font-medium text-ifb-yellow">{formatCurrency(e.net_amount || e.gross_amount)}</td>
                 </tr>
