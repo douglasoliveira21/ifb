@@ -51,6 +51,7 @@ export default function PoliticianProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [patrimonio, setPatrimonio] = useState<number | null>(null);
+  const [attendance, setAttendance] = useState<number | null>(null);
 
   useEffect(() => {
     if (!slug) return;
@@ -68,6 +69,16 @@ export default function PoliticianProfilePage() {
         if (d?.data?.length) {
           const total = d.data.reduce((s: number, i: any) => s + (i.declared_value || 0), 0);
           setPatrimonio(total);
+        }
+      })
+      .catch(() => {});
+
+    // Fetch presença
+    fetch(`${API_URL}/api/v1/politicians/${slug}/attendance`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => {
+        if (d?.summary?.attendance_rate != null) {
+          setAttendance(d.summary.attendance_rate);
         }
       })
       .catch(() => {});
@@ -116,6 +127,11 @@ export default function PoliticianProfilePage() {
                 {patrimonio !== null && patrimonio > 0 && (
                   <span className="px-3 py-1 text-[11px] font-bold bg-ifb-gray-800 text-ifb-yellow border border-ifb-yellow/40">
                     Patrimônio: {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(patrimonio)}
+                  </span>
+                )}
+                {attendance !== null && (
+                  <span className={`px-3 py-1 text-[11px] font-bold border ${attendance >= 80 ? "bg-green-900/30 text-green-400 border-green-700" : attendance >= 50 ? "bg-yellow-900/30 text-yellow-400 border-yellow-700" : "bg-red-900/30 text-red-400 border-red-700"}`}>
+                    Presença: {attendance}%
                   </span>
                 )}
               </div>

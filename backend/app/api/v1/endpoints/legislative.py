@@ -206,50 +206,65 @@ async def get_votes(
 async def get_attendance(
     slug: str,
     year: int | None = Query(None),
-    month: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Presença em sessões legislativas."""
+    """Presença calculada a partir das votações nominais registradas."""
     legislator_ids = await _get_legislator_ids(slug, db)
     if not legislator_ids:
         return {"data": [], "summary": {}, "metadata": LegislativeMetadata(availability="not_available").model_dump()}
 
-    query = select(SessionAttendance).where(
-        SessionAttendance.legislator_id.in_(legislator_ids)
+    # Count total vote events in the period (= sessions with nominal vote)
+    total_events_query = select(sa_func.count(LegislativeVoteEvent.id))
+    if year:
+        total_events_query = total_events_query.where(
+            sa_func.extract("year", LegislativeVoteEvent.date) == year
+        )
+    total_events = (await db.execute(total_events_query)).scalar_one()
+
+    # Count votes by this legislator (present = voted anything)
+    votes_query = (
+        select(
+            LegislatorVote.normalized_vote,
+            sa_func.count(LegislatorVote.vote_event_id),
+        )
+        .where(LegislatorVote.legislator_id.in_(legislator_ids))
     )
     if year:
-        query = query.where(sa_func.extract("year", SessionAttendance.session_date) == year)
-    if month:
-        query = query.where(sa_func.extract("month", SessionAttendance.session_date) == month)
+        votes_query = votes_query.join(
+            LegislativeVoteEvent, LegislatorVote.vote_event_id == LegislativeVoteEvent.id
+        ).where(sa_func.extract("year", LegislativeVoteEvent.date) == year)
+    votes_query = votes_query.group_by(LegislatorVote.normalized_vote)
 
-    result = await db.execute(query.order_by(SessionAttendance.session_date.desc()))
-    records = result.scalars().all()
+    result = await db.execute(votes_query)
+    vote_counts: dict[str, int] = {}
+    for vote_type, count in result.all():
+        vote_counts[vote_type] = count
 
-    # Calculate summary
-    total = len(records)
-    present = sum(1 for r in records if r.attendance_status == "present")
-    absent_justified = sum(1 for r in records if r.attendance_status == "absent_justified")
-    absent = sum(1 for r in records if r.attendance_status == "absent")
+    total_voted = sum(vote_counts.values())
+    present = sum(c for k, c in vote_counts.items() if k not in ("absent",))
+    absent = vote_counts.get("absent", 0)
+    # Sessions where legislator didn't vote at all
+    not_registered = max(0, total_events - total_voted)
+
+    total_sessions = total_events
+    attendance_rate = round(present / total_sessions * 100, 1) if total_sessions > 0 else None
 
     return {
-        "data": [
-            {
-                "date": str(r.session_date) if r.session_date else None,
-                "session_type": r.session_type,
-                "status": r.attendance_status,
-                "justification": r.justification,
-            }
-            for r in records[:100]  # Limit to 100 most recent
-        ],
+        "data": [],
         "summary": {
-            "total_sessions": total,
+            "total_sessions": total_sessions,
             "present": present,
-            "absent_justified": absent_justified,
-            "absent": absent,
-            "attendance_rate": round(present / total * 100, 1) if total > 0 else None,
+            "absent": absent + not_registered,
+            "voted_yes": vote_counts.get("yes", 0),
+            "voted_no": vote_counts.get("no", 0),
+            "abstention": vote_counts.get("abstention", 0),
+            "obstruction": vote_counts.get("obstruction", 0),
+            "attendance_rate": attendance_rate,
         },
-        "metadata": LegislativeMetadata().model_dump(),
-        "methodology_url": "/api/v1/methodologies/attendance",
+        "metadata": {
+            **LegislativeMetadata().model_dump(),
+            "methodology": "Presença calculada a partir das votações nominais. Deputado considerado presente quando registrou voto (Sim, Não, Abstenção, Obstrução, Art.17 ou Presidente).",
+        },
     }
 
 
