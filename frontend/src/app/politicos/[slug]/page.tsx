@@ -130,7 +130,7 @@ export default function PoliticianProfilePage() {
       <div className="max-w-ifb mx-auto px-6 lg:px-10 py-6">
         {activeTab === "overview" && <OverviewTab politician={politician} />}
         {activeTab === "propositions" && <DataTab slug={slug} endpoint="propositions" title="Projetos de Lei" />}
-        {activeTab === "votes" && <DataTab slug={slug} endpoint="votes" title="Votações" />}
+        {activeTab === "votes" && <VotesTab slug={slug} />}
         {activeTab === "expenses" && <DataTab slug={slug} endpoint="parliamentary-expenses" title="Gastos Parlamentares" />}
         {activeTab === "committees" && <DataTab slug={slug} endpoint="committees" title="Comissões" />}
         {activeTab === "electoral" && <DataTab slug={slug} endpoint="candidacies" title="Histórico Eleitoral" />}
@@ -218,6 +218,180 @@ function InfoRow({ label, value }: { label: string; value: string | null | undef
     <div>
       <dt className="text-[11px] text-ifb-gray-500 uppercase">{label}</dt>
       <dd className="text-[13px] text-ifb-white font-medium">{value || "—"}</dd>
+    </div>
+  );
+}
+
+/* ===== VOTES TAB (dedicated with filters) ===== */
+function VotesTab({ slug }: { slug: string }) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [voteFilter, setVoteFilter] = useState("");
+  const [yearFilter, setYearFilter] = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (yearFilter) params.set("year", yearFilter);
+    params.set("limit", "100");
+    fetch(`${API_URL}/api/v1/politicians/${slug}/votes?${params}`)
+      .then((r) => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); })
+      .then(setData)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [slug, yearFilter]);
+
+  const VOTE_LABELS: Record<string, string> = {
+    yes: "Sim", no: "Não", abstention: "Abstenção", obstruction: "Obstrução",
+    art17: "Art. 17", president: "Presidente", absent: "Ausente", other: "Outro",
+  };
+
+  const VOTE_COLORS: Record<string, string> = {
+    yes: "text-green-400", no: "text-red-400", abstention: "text-ifb-gray-400",
+    obstruction: "text-orange-400", absent: "text-ifb-gray-600", president: "text-ifb-yellow",
+    art17: "text-blue-400", other: "text-ifb-gray-500",
+  };
+
+  if (loading) return (
+    <div className="border border-ifb-gray-800 bg-ifb-black-soft p-6 animate-pulse">
+      <div className="h-4 bg-ifb-gray-800 w-1/3 mb-4" />
+      <div className="space-y-3">{[1,2,3,4,5].map(i => <div key={i} className="h-12 bg-ifb-gray-800" />)}</div>
+    </div>
+  );
+
+  if (error) return (
+    <div className="border border-ifb-gray-800 bg-ifb-black-soft p-6">
+      <h2 className="text-[14px] font-bold uppercase tracking-wide text-ifb-yellow mb-2">Votações</h2>
+      <p className="text-[13px] text-red-400">Erro ao carregar dados ({error})</p>
+    </div>
+  );
+
+  const items = data?.data || [];
+
+  // Apply client-side filters
+  const filtered = items.filter((v: any) => {
+    if (voteFilter && v.vote !== voteFilter && v.normalized_vote !== voteFilter) return false;
+    if (search) {
+      const desc = (v.description || "").toLowerCase();
+      if (!desc.includes(search.toLowerCase())) return false;
+    }
+    return true;
+  });
+
+  // Count by vote type
+  const counts: Record<string, number> = {};
+  items.forEach((v: any) => {
+    const key = v.vote || v.normalized_vote || "other";
+    counts[key] = (counts[key] || 0) + 1;
+  });
+
+  return (
+    <div className="border border-ifb-gray-800 bg-ifb-black-soft p-6">
+      <h2 className="text-[14px] font-bold uppercase tracking-wide text-ifb-yellow mb-4">Votações</h2>
+
+      {/* Summary counters */}
+      {items.length > 0 && (
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-5">
+          {Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([key, count]) => (
+            <button
+              key={key}
+              onClick={() => setVoteFilter(voteFilter === key ? "" : key)}
+              className={`text-center py-2 border transition ${voteFilter === key ? "border-ifb-yellow bg-ifb-yellow/10" : "border-ifb-gray-700 hover:border-ifb-gray-500"}`}
+            >
+              <p className={`text-[16px] font-bold ${VOTE_COLORS[key] || "text-ifb-gray-400"}`}>{count}</p>
+              <p className="text-[9px] text-ifb-gray-500 uppercase">{VOTE_LABELS[key] || key}</p>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 mb-4">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por descrição da votação..."
+          className="flex-1 min-w-[200px] h-[38px] px-3 bg-ifb-black border border-ifb-gray-700 text-[12px] text-ifb-white placeholder:text-ifb-gray-600 outline-none focus:border-ifb-yellow transition"
+        />
+        <select
+          value={yearFilter}
+          onChange={(e) => setYearFilter(e.target.value)}
+          className="h-[38px] px-3 bg-ifb-black border border-ifb-gray-700 text-[12px] text-ifb-gray-300 outline-none focus:border-ifb-yellow"
+        >
+          <option value="">Todos os anos</option>
+          <option value="2026">2026</option>
+          <option value="2025">2025</option>
+          <option value="2024">2024</option>
+          <option value="2023">2023</option>
+        </select>
+        <select
+          value={voteFilter}
+          onChange={(e) => setVoteFilter(e.target.value)}
+          className="h-[38px] px-3 bg-ifb-black border border-ifb-gray-700 text-[12px] text-ifb-gray-300 outline-none focus:border-ifb-yellow"
+        >
+          <option value="">Todos os votos</option>
+          <option value="yes">Sim</option>
+          <option value="no">Não</option>
+          <option value="abstention">Abstenção</option>
+          <option value="obstruction">Obstrução</option>
+          <option value="absent">Ausente</option>
+        </select>
+        {(search || voteFilter || yearFilter) && (
+          <button onClick={() => { setSearch(""); setVoteFilter(""); setYearFilter(""); }} className="h-[38px] px-3 text-[11px] text-ifb-gray-400 hover:text-ifb-yellow transition">Limpar</button>
+        )}
+      </div>
+
+      {/* Results count */}
+      <p className="text-[11px] text-ifb-gray-500 mb-3">
+        {filtered.length} votação(ões) {voteFilter && `(${VOTE_LABELS[voteFilter] || voteFilter})`} {search && `contendo "${search}"`}
+      </p>
+
+      {/* Table */}
+      {filtered.length === 0 ? (
+        <div className="text-center py-8">
+          <p className="text-[13px] text-ifb-gray-500">Nenhuma votação encontrada com os filtros selecionados.</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="border-b border-ifb-gray-700">
+                <th className="text-left py-2 px-3 text-[10px] font-bold text-ifb-gray-500 uppercase w-[90px]">Data</th>
+                <th className="text-left py-2 px-3 text-[10px] font-bold text-ifb-gray-500 uppercase">Descrição</th>
+                <th className="text-left py-2 px-3 text-[10px] font-bold text-ifb-gray-500 uppercase w-[100px]">Voto</th>
+                <th className="text-left py-2 px-3 text-[10px] font-bold text-ifb-gray-500 uppercase w-[100px]">Resultado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.slice(0, 50).map((v: any, i: number) => {
+                const voteKey = v.vote || v.normalized_vote || "other";
+                return (
+                  <tr key={i} className="border-b border-ifb-gray-800 hover:bg-ifb-yellow/5 transition">
+                    <td className="py-3 px-3 text-ifb-gray-400 whitespace-nowrap">
+                      {v.date ? new Date(v.date).toLocaleDateString("pt-BR") : "—"}
+                    </td>
+                    <td className="py-3 px-3 text-ifb-gray-300 leading-snug">
+                      {v.description || "Sem descrição"}
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className={`font-bold ${VOTE_COLORS[voteKey] || "text-ifb-gray-400"}`}>
+                        {v.original_vote || VOTE_LABELS[voteKey] || voteKey}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-ifb-gray-400">
+                      {v.result === "true" || v.result === "1" ? "Aprovado" : v.result === "false" || v.result === "0" ? "Rejeitado" : v.result || "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {filtered.length > 50 && <p className="text-[11px] text-ifb-gray-600 mt-3 text-center">Mostrando 50 de {filtered.length} votações</p>}
+        </div>
+      )}
     </div>
   );
 }
